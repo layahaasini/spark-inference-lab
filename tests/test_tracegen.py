@@ -60,6 +60,23 @@ def test_zipf_skews_turn_counts():
     assert max(counts.values()) > 2 * (8 * 20) / 8
 
 
+def test_session_word_cap():
+    cap = 1500
+    for alpha in (0.0, 1.5):
+        cfg = TraceConfig(seed=8, n_sessions=6, turns=40, sys_tokens=200,
+                          zipf_alpha=alpha, max_session_words=cap)
+        counts = {}
+        for ev in gen_trace(cfg):
+            counts[ev["session"]] = ev["prompt"]
+        # cap + one turn's worst case (max tool words + header) is the hard bound,
+        # because eligibility is checked before the turn's size is drawn
+        bound = cap + 400 + 4
+        for prompt in counts.values():
+            assert len(prompt.split()) - 2 <= bound + cfg.sys_tokens  # session tag/head overhead
+        # determinism must survive the capped scheduling path
+        assert gen_trace(cfg) == gen_trace(cfg)
+
+
 def test_event_count_even_mode():
     cfg = TraceConfig(seed=4, n_sessions=3, turns=5, group_size=2)
     assert len(gen_trace(cfg)) == 3 * 5 * 2

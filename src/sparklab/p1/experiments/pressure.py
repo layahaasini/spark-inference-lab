@@ -52,6 +52,8 @@ def main():
     ap.add_argument("--sys-tokens", type=int, default=800)
     ap.add_argument("--group-size", type=int, default=1)
     ap.add_argument("--zipf-alpha", type=float, default=0.0)
+    ap.add_argument("--max-session-words", type=int, default=None,
+                    help="per-session word budget; required in zipf mode so hot sessions stay under context_len")
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--out-dir", default="runs")
     a = ap.parse_args()
@@ -65,7 +67,8 @@ def main():
     results = []
     for n in a.sessions:
         cfg = TraceConfig(seed=a.seed, n_sessions=n, turns=a.turns, sys_tokens=a.sys_tokens,
-                          group_size=a.group_size, zipf_alpha=a.zipf_alpha)
+                          group_size=a.group_size, zipf_alpha=a.zipf_alpha,
+                          max_session_words=a.max_session_words)
         res = run_point(cfg, a.base_url)
         results.append(res)
         t = res["ttft_ms"]

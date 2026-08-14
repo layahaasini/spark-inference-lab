@@ -47,7 +47,12 @@ def generate(text, base_url=DEFAULT_BASE_URL, max_new_tokens=8, timeout=300):
                 ttft = (time.perf_counter() - t0) * 1e3
             last = line  # the final chunk carries meta_info with the token counts
     latency = (time.perf_counter() - t0) * 1e3
-    meta = json.loads(last.removeprefix(b"data: "))["meta_info"]
+    payload = json.loads(last.removeprefix(b"data: "))
+    if "meta_info" not in payload:
+        # e.g. a prompt over the server's context_len: fail loudly with the
+        # server's actual message, not a KeyError three frames deep
+        raise RuntimeError(f"server returned no meta_info (prompt len {len(text)} chars): {str(payload)[:300]}")
+    meta = payload["meta_info"]
     return GenResult(
         ttft_ms=ttft,
         latency_ms=latency,
