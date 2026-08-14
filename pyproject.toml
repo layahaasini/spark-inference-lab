@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "sparklab"
+version = "0.1.0"
+description = "Inference, kernel, and agentic-RL experiments on a DGX Spark, with a shared benchmarking module"
+requires-python = ">=3.10"
+dependencies = [
+    "requests>=2.31",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+    "needs_server: requires a running SGLang server (set SGLANG_BASE_URL, default http://localhost:30000)",
+]
