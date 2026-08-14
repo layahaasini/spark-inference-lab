@@ -6,7 +6,7 @@ setup is wrong and no downstream experiment is worth running."""
 import argparse
 import random
 
-from ..client import DEFAULT_BASE_URL, flush_cache, generate
+from ..client import DEFAULT_BASE_URL, flush_cache, generate, warmup
 from ..tracegen import TraceConfig, shared_prefix
 
 
@@ -20,6 +20,7 @@ def main():
     prefix = shared_prefix(TraceConfig(seed=a.seed, sys_tokens=a.sys_tokens))
     salt = random.random()  # unique tag so stale cache entries from old runs can't interfere
 
+    warmup(a.base_url)  # without this, a fresh server's one-time costs inflate the cold number
     flush_cache(a.base_url)
     cold = generate(f"{prefix}\nUSER[{salt}]: turn 1", base_url=a.base_url)
     warm = generate(f"{prefix}\nUSER[{salt}]: turn 2, different suffix", base_url=a.base_url)

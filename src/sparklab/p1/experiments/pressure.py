@@ -20,8 +20,8 @@ import pathlib
 import requests
 
 from ...bench import collect_manifest, percentiles
-from ..client import DEFAULT_BASE_URL, flush_cache, generate, server_info
-from ..tracegen import TraceConfig, gen_trace, shared_prefix
+from ..client import DEFAULT_BASE_URL, flush_cache, generate, server_info, warmup
+from ..tracegen import TraceConfig, gen_trace
 
 
 def run_point(cfg, base_url):
@@ -59,11 +59,7 @@ def main():
     a = ap.parse_args()
 
     manifest = collect_manifest(extra={"server_info": server_info(a.base_url), "args": vars(a)})
-    # untimed throwaway at representative size: the first LARGE prefill after a
-    # restart pays one-time costs that a tiny warmup prompt does not trigger,
-    # and they would otherwise land in the first point's p99 (seed chosen so
-    # this prompt shares nothing with any trace)
-    generate(shared_prefix(TraceConfig(seed=10**6, sys_tokens=a.sys_tokens)), base_url=a.base_url)
+    warmup(a.base_url)
     results = []
     for n in a.sessions:
         cfg = TraceConfig(seed=a.seed, n_sessions=n, turns=a.turns, sys_tokens=a.sys_tokens,

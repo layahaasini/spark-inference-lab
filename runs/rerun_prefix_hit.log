@@ -1,0 +1,2 @@
+cold: TTFT   505.2 ms | prompt 19582 tok | cached 0 tok
+warm: TTFT    32.9 ms | prompt 19585 tok | cached 19581 tok (100% of prompt matched)

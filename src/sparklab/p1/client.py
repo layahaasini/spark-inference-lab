@@ -61,6 +61,16 @@ def generate(text, base_url=DEFAULT_BASE_URL, max_new_tokens=8, timeout=300):
     )
 
 
+def warmup(base_url=DEFAULT_BASE_URL):
+    """One untimed throwaway sized past chunked_prefill_size (8192 tokens at our
+    settings): the first prefill through each server code path after a restart
+    pays one-time costs, and the multi-chunk path only engages above that
+    threshold — a small warmup leaves a ~3s outlier in the first measured p99.
+    Seed shares nothing with any trace, so no cache entry it primes can hit."""
+    from .tracegen import TraceConfig, shared_prefix
+    generate(shared_prefix(TraceConfig(seed=10**6, sys_tokens=2400)), base_url=base_url)
+
+
 def flush_cache(base_url=DEFAULT_BASE_URL):
     """Empty the radix cache so the next request is truly cold."""
     requests.post(f"{base_url}/flush_cache", timeout=30).raise_for_status()
