@@ -17,14 +17,19 @@ import argparse
 import json
 import pathlib
 
+import requests
+
 from ...bench import collect_manifest, percentiles
 from ..client import DEFAULT_BASE_URL, flush_cache, generate, server_info
-from ..tracegen import TraceConfig, gen_trace
+from ..tracegen import TraceConfig, gen_trace, shared_prefix
 
 
 def run_point(cfg, base_url):
     """One sweep point: fresh cache, full trace replay, distribution summary."""
-    flush_cache(base_url)
+    try:
+        flush_cache(base_url)
+    except requests.HTTPError:
+        pass  # a --disable-radix-cache server has nothing to flush
     rows = [generate(ev["prompt"], base_url=base_url) for ev in gen_trace(cfg)]
     prompt = sum(r.prompt_tokens for r in rows)
     cached = sum(r.cached_tokens for r in rows)
@@ -52,6 +57,11 @@ def main():
     a = ap.parse_args()
 
     manifest = collect_manifest(extra={"server_info": server_info(a.base_url), "args": vars(a)})
+    # untimed throwaway at representative size: the first LARGE prefill after a
+    # restart pays one-time costs that a tiny warmup prompt does not trigger,
+    # and they would otherwise land in the first point's p99 (seed chosen so
+    # this prompt shares nothing with any trace)
+    generate(shared_prefix(TraceConfig(seed=10**6, sys_tokens=a.sys_tokens)), base_url=a.base_url)
     results = []
     for n in a.sessions:
         cfg = TraceConfig(seed=a.seed, n_sessions=n, turns=a.turns, sys_tokens=a.sys_tokens,
