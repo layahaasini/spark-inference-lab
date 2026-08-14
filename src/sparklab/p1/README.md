@@ -4,6 +4,8 @@
 **Method:** a parameterized synthetic-trace generator (shared system prefix, append-only per-turn growth, N interleaved sessions, GRPO group mode, Zipf skew) replayed against SGLang on a DGX Spark, cache on vs off, eviction pressure varied via `--mem-fraction-static`.
 **Result (measured, write-up pending):** caching refunds **~84% of prefill work** on this trace shape and buys ~3.5× on p50 TTFT vs `--disable-radix-cache`. On a deliberately shrunk 383k-token pool, hit rate holds its ceiling until the working-set knee — predicted at 73 sessions from measured trace parameters, observed at 72–80 — then degrades gradually (64.3% at 2.2× pool, even scheduling). Heavy-tail (Zipf) traffic holds 86.5% under the same pressure; GRPO group-shape rollouts reach ~96%. Full write-up September 2026.
 
+**Write-up:** [What is prefix caching actually worth for tool-calling agents?](../../../writeups/p1_prefix_caching_economics.md) (draft)
+
 ## Pieces
 
 - [tracegen.py](tracegen.py) — the trace generator (shared module; Project 3 reuses it for rollout traces)
