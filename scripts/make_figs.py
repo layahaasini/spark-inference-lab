@@ -9,12 +9,16 @@ import glob
 import json
 import pathlib
 
+import sys
+
 import matplotlib
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT / "src"))
+from sparklab.p1.tracegen import TraceConfig, gen_trace  # noqa: E402
 FIGS = ROOT / "writeups" / "figs"
 
 # palette: categorical slots 1-3, chrome/ink roles
@@ -54,6 +58,41 @@ def load_runs():
     return shapes
 
 
+def attainable_hit(cfg):
+    """Best possible hit rate for a trace under an infinite cache: each request
+    can reuse at most its longest previously-seen prefix. Computed in words,
+    which is ratio-safe because word->token expansion is uniform here."""
+    events = gen_trace(cfg)
+    head = None
+    prev = {}
+    total = cached = 0
+    for ev in events:
+        words = ev["prompt"].split()
+        total += len(words)
+        s = ev["session"]
+        ref = prev.get(s) if s in prev else head
+        if ref is not None:
+            n = 0
+            for a, b in zip(ref, words):
+                if a != b:
+                    break
+                n += 1
+            cached += n
+        if head is None:
+            # everything up to the per-session tag is the shareable head
+            head = words
+        prev[s] = words
+    return cached / total
+
+
+def cfg_for(run, n_sessions):
+    a = run["manifest"]["args"]
+    return TraceConfig(seed=a["seed"], n_sessions=n_sessions, turns=a["turns"],
+                       sys_tokens=a["sys_tokens"], group_size=a.get("group_size", 1),
+                       zipf_alpha=a.get("zipf_alpha", 0.0),
+                       max_session_words=a.get("max_session_words"))
+
+
 def style(ax):
     ax.spines[["top", "right"]].set_visible(False)
     ax.grid(axis="x", visible=False)
@@ -84,6 +123,28 @@ def fig_hit_rate(shapes):
     ax.legend(frameon=False, labelcolor=INK2, loc="lower left")
     fig.tight_layout()
     fig.savefig(FIGS / "hit_rate_vs_sessions.png", dpi=180)
+
+
+def fig_hit_rate_normalized(shapes):
+    """Measured hit rate as a fraction of each shape's own attainable maximum —
+    the fair cross-shape comparison, since the raw ceilings differ by trace shape."""
+    fig, ax = plt.subplots(figsize=(7.2, 4.2))
+    for key, color, label in (("knee", BLUE, "uniform"), ("zipf", ORANGE, "Zipf α=1.1")):
+        rs = shapes[key]["results"]
+        xs = [r["n_sessions"] for r in rs]
+        ys = [r["hit_rate"] / attainable_hit(cfg_for(shapes[key], r["n_sessions"])) * 100 for r in rs]
+        ax.plot(xs, ys, color=color, linewidth=2, marker="o", markersize=6, label=label)
+        ax.annotate(label, (xs[-1], ys[-1]), textcoords="offset points",
+                    xytext=(8, -3), color=INK2, fontsize=10)
+    ax.set_ylim(0, 105)
+    ax.set_xlim(left=0)
+    knee_line(ax)
+    ax.set_xlabel("concurrent sessions")
+    ax.set_ylabel("share of attainable hits achieved (%)")
+    ax.set_title("Normalized to each shape's own ceiling (infinite-cache maximum)", loc="left")
+    ax.legend(frameon=False, labelcolor=INK2, loc="lower left")
+    fig.tight_layout()
+    fig.savefig(FIGS / "hit_rate_normalized.png", dpi=180)
 
 
 def fig_ttft(shapes):
@@ -135,6 +196,7 @@ def main():
     if missing:
         raise SystemExit(f"missing run shapes: {missing}")
     fig_hit_rate(shapes)
+    fig_hit_rate_normalized(shapes)
     fig_ttft(shapes)
     fig_tokens_avoided(shapes)
     for f in sorted(FIGS.glob("*.png")):

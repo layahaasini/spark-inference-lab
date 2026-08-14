@@ -4,13 +4,13 @@
 
 **Question:** how much does SGLang's RadixAttention actually save on realistic agentic workloads, in tokens and milliseconds?
 **Method:** a parameterized synthetic-trace generator modeling how agent frameworks assemble context (long shared system prefix, append-only per-turn growth, N interleaved sessions, heavy-tail scheduling, GRPO group sampling), replayed against a pinned SGLang server on a DGX Spark — cache on vs off, eviction pressure controlled by shrinking the KV pool.
-**Result:** on this workload, prefix caching refunds **~84% of all prefill work** and cuts p50 time-to-first-token ~3.6× (~134 ms → ~37 ms). The hit rate holds that ceiling until the cache working set crosses pool capacity at a knee **predictable in advance from three measured trace parameters** (predicted 73 sessions, observed 72–80), degrades gradually rather than falling off a cliff, and lands tail-first: p99 TTFT rises ~2.6× across the knee while p50 barely moves. Heavy-tail (Zipf) traffic holds an 86.5% hit rate under pressure that drags uniform traffic down to 64.8%, and RL-style group rollouts run at ~96% — the most cache-favorable workload there is.
+**Result:** on this workload, prefix caching refunds **~84% of all prefill work** and cuts p50 time-to-first-token ~3.6× (~134 ms → ~37 ms). The hit rate holds that ceiling until the cache working set crosses pool capacity at a knee **predictable in advance from three measured quantities** — shared-head size, per-session growth, and the server's printed pool capacity (predicted 73 sessions, observed 72–80), degrades gradually rather than falling off a cliff, and lands tail-first: p99 TTFT rises ~2.6× across the knee while p50 barely moves. Heavy-tail (Zipf) traffic holds an 86.5% hit rate under pressure that drags uniform traffic down to 64.8%, and RL-style group rollouts run at ~96% — the most cache-favorable workload there is.
 
 ## Why measure this
 
 Every serving engine now ships prefix caching, and every agent framework produces exactly the workload it loves: a large fixed block of instructions and tool schemas at the top of every request, a conversation that only ever grows at the end, and turn after turn re-sending everything the model has already seen. The qualitative story — "caching helps agents" — is everywhere. What I could not find published: *how much*, measured, on a stated workload, with the failure boundary located. This post is that measurement.
 
-The numbers that translate to money are **prefill tokens avoided** — every cached token is prompt-processing work the GPU never repeats — so that metric leads every table below. Commercial APIs price cached input at roughly 10–25% of the fresh-token rate; an 84% refund at that spread cuts effective prompt-side cost by ~63–76%. *(Re-check and date provider pricing before publication.)*
+The numbers that translate to money are **prefill tokens avoided** — every cached token is prompt-processing work the GPU never repeats — so that metric leads every table below. Commercial APIs price cached input at roughly 2–10% of the fresh-token rate (as of August 2026: Anthropic bills cache reads at ~10% of the base input price, OpenAI's cached input is 10% of the fresh rate, and DeepSeek's cache hits run ~2% of the cache-miss rate). At that spread, an 84% refund cuts effective prompt-side cost by **~76–82%**. The nonzero floor also confirms the accounting: a cache hit still pays real storage and retrieval costs, which is exactly what the hit-rate-under-pressure experiments below measure the limits of.
 
 ## Setup
 
@@ -42,7 +42,7 @@ Tokens are approximated as words at generation time; every published count is th
 
 ### 1. Cache off vs cache on: the refund
 
-Same trace (2–32 sessions × 5 turns), same server config, one flag flipped:
+Same trace (2–32 sessions × 5 turns), same server config, one flag flipped. Three of five sweep points shown; the omitted rows (4, 16 sessions) sit between their neighbors, full data in `runs/`:
 
 | sessions | cache-off p50 / p99 TTFT | cache-on p50 / p99 TTFT | hit rate | tokens avoided |
 |---|---|---|---|---|
@@ -92,7 +92,13 @@ Same pool, same session counts, Zipf-weighted scheduling (α = 1.1, context-capp
 
 ![Hit rate vs sessions for uniform and Zipf scheduling, with the predicted knee marked](figs/hit_rate_vs_sessions.png)
 
-At maximum pressure, heavy-tail traffic holds a **22-point hit-rate advantage**. The mechanism is classical cache theory landing exactly as predicted: LRU keeps hot sessions resident, hot sessions carry most of the traffic, and evictions concentrate on cold sessions nobody revisits. Real agent fleets are heavy-tailed, so uniform-traffic benchmarks — including most published ones — *understate* what prefix caching is worth in production. (Comparison caveat: capped Zipf sessions grow longer than uniform ones, so the two curves have different attainable maxima; normalize each to its own ceiling before plotting them together.)
+At maximum pressure, heavy-tail traffic holds a **22-point hit-rate advantage**. The mechanism is classical cache theory landing exactly as predicted: LRU keeps hot sessions resident, hot sessions carry most of the traffic, and evictions concentrate on cold sessions nobody revisits. Real agent fleets are heavy-tailed, so uniform-traffic benchmarks — including most published ones — *understate* what prefix caching is worth in production.
+
+Because capped Zipf sessions grow longer than uniform ones, the two curves have different attainable maxima, so the fair comparison normalizes each to its own infinite-cache ceiling (computed by longest-prefix simulation over the same traces):
+
+![Hit rate normalized to each shape's attainable maximum](figs/hit_rate_normalized.png)
+
+Two things fall out of the normalized view. Below the knee, both shapes sit at ~100% — RadixAttention captures essentially **every hit the workload makes available**, so the raw ~84% ceiling was the trace's property, not the engine's. Past the knee, uniform traffic decays to 77% of attainable at 160 sessions while Zipf holds 96%: the entire collapse is an eviction story, and popularity skew is what shields against it.
 
 ### 4. Group rollouts: the RL preview
 
@@ -119,6 +125,7 @@ The standard capacity identity: if prefill is a fraction *f* of serving work and
 - **The first number I got was wrong, and the cache-off baseline caught it.** My cold/warm sanity check initially showed a 123× TTFT ratio (3.8 s cold). The cache-off sweep then showed full re-prefill of mid-size contexts costs ~140 ms — so a 19.6k-token prefill cannot legitimately cost 3.8 s. That first-ever request had absorbed one-time server warmup. Re-measured with warmup excluded, the same prompt is 505 ms cold / 33 ms warm: **15.4×, not 123×.** Running the weakened-baseline check from Heiser's measurement-crimes list is the only reason the wrong number didn't ship.
 - **The warmup itself took two attempts to get right.** A tiny warmup request did not clear the artifact; neither did a mid-size one. The one-time cost hides in the chunked-prefill code path, which only engages above 8,192 prompt tokens — so a warmup that stays below the chunking threshold warms the wrong path. The harness now warms up past `chunked_prefill_size`, and every first-point p99 in the tables above is clean. (General lesson: warm up through the *same code paths* the measurement will take, not just the same endpoint.)
 - **Absolute numbers stay home.** Ratios, curve shapes, the knee-prediction method, and the traffic-shape gap transfer; milliseconds and dollars from a 273 GB/s single node do not.
+- **One replay per sweep point, no formal error bars.** Each point is a single full-trace replay (60–800 requests, so per-point percentiles are well-populated, but point-to-point variability is only bounded empirically: the knee sweep run twice across separate server restarts reproduced every hit rate within ~1 point). Bootstrap confidence intervals on the percentiles are queued for the final charts.
 - **One model, one engine, serial replay.** 0.5B-class model, SGLang only, one request in flight (the per-session closed loop is real; fleet-level concurrent arrivals are not modeled). vLLM's block-hash design would show the same shape with coarser matching granularity — measuring that is the obvious cross-engine follow-up.
 
 ## Reproducing
@@ -135,7 +142,7 @@ python -m sparklab.p1.experiments.pressure --sessions 16 48 64 72 80 96 128 160
 - [x] Fix warmup to exceed `chunked_prefill_size`; re-run affected sweeps; remove † markers
 - [x] Re-run cold/warm sanity check post-warmup-fix; quote the honest ratio (505 ms / 33 ms = 15.4×)
 - [x] Charts: hit-rate-vs-sessions (uniform + Zipf + predicted-knee line), TTFT p50/p99 pair, tokens-avoided bars — generated from run JSONs by `scripts/make_figs.py`
-- [ ] Normalize uniform/Zipf curves to per-shape attainable maxima
-- [ ] Re-check cached-token pricing pages; date the citation
-- [ ] Every chart re-checked against the measurement-crimes list
-- [ ] Final pass: does every starred claim appear as a plain sentence a screener can quote?
+- [x] Normalize uniform/Zipf curves to per-shape attainable maxima — infinite-cache simulation in `scripts/make_figs.py`; below the knee both shapes achieve ~100% of attainable
+- [x] Re-check cached-token pricing pages; date the citation (August 2026: Anthropic ~10%, OpenAI 10%, DeepSeek ~2% — re-verify at publication)
+- [x] Every chart re-checked against the measurement-crimes list — zero-based axes throughout; cache-off baseline present; distributions not means; configs disclosed in Setup + manifests; cross-shape comparability caveated and normalized; omitted table rows disclosed; run-to-run variability stated in Honesty section
+- [x] Final pass: every headline claim appears as a plain quotable sentence (refund, TTFT ratio, ceiling case, knee prediction, slope-not-cliff, tail-first, Zipf gap, normalized ~100%, group ~96%, capacity projection flagged as projection)
