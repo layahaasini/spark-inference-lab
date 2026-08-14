@@ -1,0 +1,6 @@
+sessions=  4  p50=   21.9ms  p99=   88.3ms  hit=95.5%  tokens-avoided=543,859
+sessions= 16  p50=   22.1ms  p99=   62.8ms  hit=95.9%  tokens-avoided=2,191,284
+sessions= 64  p50=   25.5ms  p99=   66.2ms  hit=96.1%  tokens-avoided=8,953,955
+sessions= 96  p50=   21.8ms  p99=  142.8ms  hit=93.9%  tokens-avoided=12,976,262
+
+wrote runs/pressure_2026-08-14T11-30-25.json

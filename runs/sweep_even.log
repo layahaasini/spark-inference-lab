@@ -1,0 +1,10 @@
+sessions= 16  p50=   39.0ms  p99= 3038.8ms  hit=84.6%  tokens-avoided=492,427
+sessions= 48  p50=   39.6ms  p99=   68.4ms  hit=84.2%  tokens-avoided=1,491,719
+sessions= 64  p50=   40.7ms  p99=   73.2ms  hit=84.6%  tokens-avoided=1,932,930
+sessions= 72  p50=   39.9ms  p99=  107.3ms  hit=84.0%  tokens-avoided=2,189,287
+sessions= 80  p50=   42.8ms  p99=  159.6ms  hit=81.6%  tokens-avoided=2,321,106
+sessions= 96  p50=   46.8ms  p99=  172.9ms  hit=75.6%  tokens-avoided=2,644,441
+sessions=128  p50=   51.4ms  p99=  188.6ms  hit=67.8%  tokens-avoided=3,182,906
+sessions=160  p50=   55.8ms  p99=  187.4ms  hit=64.3%  tokens-avoided=3,709,701
+
+wrote runs/pressure_2026-08-14T11-16-11.json
