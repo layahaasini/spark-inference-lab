@@ -28,6 +28,19 @@ def _pkg_version(name):
         return None
 
 
+def _src_commit(name):
+    """Source installs have no pip metadata; the git commit of the checkout is
+    the real version pin. Returns None for wheel installs or missing packages."""
+    try:
+        from importlib.util import find_spec
+        spec = find_spec(name)
+        if spec is None or not spec.origin:
+            return None
+        return _sh(f"git -C {pathlib.Path(spec.origin).parent} rev-parse --short HEAD")
+    except (ImportError, ValueError):
+        return None
+
+
 def collect_manifest(extra=None):
     m = {
         "ts": datetime.datetime.now().isoformat(timespec="seconds"),
@@ -37,6 +50,7 @@ def collect_manifest(extra=None):
         "argv": sys.argv,
         # library versions via package metadata — cheap, no CUDA import at collect time
         "versions": {name: _pkg_version(name) for name in ("sglang", "torch", "transformers", "requests")},
+        "sglang_src_commit": _src_commit("sglang"),
         "gpu": _sh("nvidia-smi --query-gpu=name,driver_version --format=csv,noheader"),
         "clocks_temp": _sh("nvidia-smi --query-gpu=clocks.sm,temperature.gpu --format=csv,noheader"),
     }
