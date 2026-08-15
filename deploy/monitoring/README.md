@@ -12,9 +12,11 @@ window invalidates the window.
 docker compose up -d
 docker compose --profile gpu up -d    # optional: GPU temp/clocks via DCGM (best-effort on GB10)
 
-# from the dev machine
-ssh -L 3000:localhost:3000 cute-spark
-# open http://localhost:3000 — anonymous viewer access; admin/sparklab to edit
+# from the dev machine (any free local port works on the left side;
+# 3000 is often taken locally by dev servers/port-forwards)
+ssh -L 3001:localhost:3000 cute-spark
+# dashboard: http://localhost:3001/d/sparklab
+# anonymous viewer access; admin/sparklab to edit
 ```
 
 Nothing binds off-box: all three services use host networking on localhost
