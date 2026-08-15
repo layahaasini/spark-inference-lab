@@ -149,6 +149,19 @@ Figures are generated from `runs/*.json` (latest run per workload shape, selecte
 
 ---
 
+## Deployment & operations
+
+Code reaches the Spark through a versioned, repeatable path — not ad-hoc ssh:
+
+- **CI** ([.github/workflows/ci.yml](.github/workflows/ci.yml)): tests on Python 3.11/3.12 for every push and PR. No green, no deploy.
+- **Releases** ([release-image.yml](.github/workflows/release-image.yml) + [Dockerfile](Dockerfile)): pushing a `v*` tag builds an arm64 image — NGC SGLang base + this repo baked in — and publishes it to GHCR. A version tag names one immutable artifact: environment and instruments together.
+- **Serving** ([deploy/sparklab-server.service](deploy/sparklab-server.service)): the server runs as a systemd user service on the Spark — survives reboots, restarts on crash, and journald records every restart *with a timestamp*. That record matters for data integrity, not just uptime: a silent restart wipes the radix cache and invalidates every measurement taken after it. Overrides (`MEM_FRAC`, `MODEL`, …) live in `~/.config/sparklab/server.env`.
+- **Deploying** ([Makefile](Makefile)): `make deploy` ships the committed tree (refuses a dirty one), reinstalls, restarts the unit, and gates on the health check. `make status` / `make logs` for inspection.
+
+**The one operational rule:** never upgrade anything — code, image, model, flags — during a measurement window. The experiment schedule and the upgrade schedule are one schedule.
+
+---
+
 ## Results (Project 1, measured 2026-08-14)
 
 Full narrative and figures: **[the write-up](writeups/p1_prefix_caching_economics.md)**. The five headline results:

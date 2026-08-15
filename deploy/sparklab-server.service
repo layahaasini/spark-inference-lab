@@ -1,0 +1,34 @@
+# systemd user service for the pinned SGLang server.
+#
+# Install (on the Spark):
+#   mkdir -p ~/.config/systemd/user
+#   cp deploy/sparklab-server.service ~/.config/systemd/user/
+#   systemctl --user daemon-reload
+#   systemctl --user enable --now sparklab-server
+#   loginctl enable-linger        # keep it running after logout/reboot
+#
+# Why this exists: nohup'd servers die silently, and a silent restart wipes the
+# radix cache and invalidates every measurement taken after it. journald records
+# each restart with a timestamp — check `journalctl --user -u sparklab-server`
+# against any run whose numbers look off.
+#
+# Overrides (MEM_FRAC, MODEL, PORT, IMAGE) go in ~/.config/sparklab/server.env,
+# one KEY=value per line. Restart the unit after changing them — and never
+# during a measurement window: the experiment schedule and the upgrade schedule
+# are one schedule.
+
+[Unit]
+Description=Pinned SGLang server for sparklab experiments
+After=network-online.target docker.service
+
+[Service]
+Type=simple
+WorkingDirectory=%h/opensource/spark-inference-lab
+EnvironmentFile=-%h/.config/sparklab/server.env
+ExecStart=/usr/bin/env bash configs/spark_server.sh
+ExecStop=/usr/bin/docker stop sparklab-server
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=default.target
