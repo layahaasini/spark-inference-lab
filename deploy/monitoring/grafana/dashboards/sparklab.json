@@ -1,0 +1,78 @@
+{
+  "uid": "sparklab",
+  "title": "sparklab serving",
+  "timezone": "browser",
+  "refresh": "5s",
+  "time": { "from": "now-30m", "to": "now" },
+  "schemaVersion": 39,
+  "panels": [
+    {
+      "id": 1, "type": "timeseries", "title": "Radix cache hit rate",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "datasource": { "uid": "prom" },
+      "fieldConfig": { "defaults": { "unit": "percentunit", "min": 0, "max": 1 }, "overrides": [] },
+      "targets": [ { "expr": "sglang:cache_hit_rate", "legendFormat": "hit rate", "refId": "A" } ]
+    },
+    {
+      "id": 2, "type": "timeseries", "title": "Prefill tokens/s: computed vs served from cache",
+      "description": "The refund, live: prefill_cache is work the GPU never repeated.",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "datasource": { "uid": "prom" },
+      "fieldConfig": { "defaults": { "unit": "short", "min": 0 }, "overrides": [] },
+      "targets": [ { "expr": "sum by (mode) (rate(sglang:realtime_tokens_total{mode=~\"prefill.*\"}[1m]))", "legendFormat": "{{mode}}", "refId": "A" } ]
+    },
+    {
+      "id": 3, "type": "timeseries", "title": "TTFT p50 / p99",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+      "datasource": { "uid": "prom" },
+      "fieldConfig": { "defaults": { "unit": "s", "min": 0 }, "overrides": [] },
+      "targets": [
+        { "expr": "histogram_quantile(0.50, sum by (le) (rate(sglang:time_to_first_token_seconds_bucket[1m])))", "legendFormat": "p50", "refId": "A" },
+        { "expr": "histogram_quantile(0.99, sum by (le) (rate(sglang:time_to_first_token_seconds_bucket[1m])))", "legendFormat": "p99", "refId": "B" }
+      ]
+    },
+    {
+      "id": 4, "type": "timeseries", "title": "KV pool occupancy",
+      "description": "token_usage = fraction of max_total_num_tokens in use; sustained ~1.0 means eviction pressure.",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+      "datasource": { "uid": "prom" },
+      "fieldConfig": { "defaults": { "unit": "percentunit", "min": 0, "max": 1 }, "overrides": [] },
+      "targets": [ { "expr": "sglang:token_usage", "legendFormat": "pool used", "refId": "A" } ]
+    },
+    {
+      "id": 5, "type": "timeseries", "title": "Requests: running / queued",
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 16 },
+      "datasource": { "uid": "prom" },
+      "fieldConfig": { "defaults": { "unit": "short", "min": 0 }, "overrides": [] },
+      "targets": [
+        { "expr": "sglang:num_running_reqs", "legendFormat": "running", "refId": "A" },
+        { "expr": "sglang:num_queue_reqs", "legendFormat": "queued", "refId": "B" }
+      ]
+    },
+    {
+      "id": 6, "type": "timeseries", "title": "Generation throughput (tok/s)",
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 16 },
+      "datasource": { "uid": "prom" },
+      "fieldConfig": { "defaults": { "unit": "short", "min": 0 }, "overrides": [] },
+      "targets": [ { "expr": "sglang:gen_throughput", "legendFormat": "decode tok/s", "refId": "A" } ]
+    },
+    {
+      "id": 7, "type": "stat", "title": "Server restarts (last 1h)",
+      "description": "Counter resets on num_requests_total = server restarted. Nonzero during a measurement window invalidates it.",
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 16 },
+      "datasource": { "uid": "prom" },
+      "fieldConfig": { "defaults": { "unit": "short", "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "red", "value": 1 } ] } }, "overrides": [] },
+      "targets": [ { "expr": "sum(resets(sglang:num_requests_total[1h]))", "refId": "A" } ]
+    },
+    {
+      "id": 8, "type": "timeseries", "title": "GPU temp / SM clock (needs gpu profile)",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 24 },
+      "datasource": { "uid": "prom" },
+      "fieldConfig": { "defaults": { "unit": "short", "min": 0 }, "overrides": [] },
+      "targets": [
+        { "expr": "DCGM_FI_DEV_GPU_TEMP", "legendFormat": "temp °C", "refId": "A" },
+        { "expr": "DCGM_FI_DEV_SM_CLOCK", "legendFormat": "SM MHz", "refId": "B" }
+      ]
+    }
+  ]
+}

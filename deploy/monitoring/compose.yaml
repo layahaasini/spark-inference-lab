@@ -1,0 +1,46 @@
+# Monitoring for the sparklab server: Prometheus records the server's /metrics
+# every 5s, Grafana draws the history. Continuous monitoring catches what
+# per-request records cannot: thermals, memory creep, silent restarts mid-run.
+#
+#   docker compose up -d          # from this directory, on the Spark
+#   ssh -L 3000:localhost:3000 cute-spark   # then open http://localhost:3000
+#
+# Host networking throughout: Prometheus reaches the server on localhost:30000,
+# Grafana serves on localhost:3000, Prometheus API on localhost:9090 — nothing
+# is exposed off-box; access is by ssh tunnel.
+services:
+  prometheus:
+    image: prom/prometheus:v3.4.0
+    network_mode: host
+    restart: unless-stopped
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prom-data:/prometheus
+
+  grafana:
+    image: grafana/grafana:11.6.0
+    network_mode: host
+    restart: unless-stopped
+    environment:
+      # box is reachable only via ssh; viewer access is anonymous, edits need admin
+      - GF_SECURITY_ADMIN_PASSWORD=sparklab
+      - GF_AUTH_ANONYMOUS_ENABLED=true
+      - GF_AUTH_ANONYMOUS_ORG_ROLE=Viewer
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana-data:/var/lib/grafana
+
+  # GPU temperature/clocks/power. Best-effort on GB10 (sm_121a support in DCGM
+  # is uneven) — enable with: docker compose --profile gpu up -d
+  dcgm:
+    profiles: [gpu]
+    image: nvcr.io/nvidia/k8s/dcgm-exporter:4.2.3-4.1.3-ubuntu22.04
+    network_mode: host
+    restart: unless-stopped
+    gpus: all
+    cap_add: [SYS_ADMIN]
+
+volumes:
+  prom-data:
+  grafana-data:
