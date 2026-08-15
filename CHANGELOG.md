@@ -13,4 +13,5 @@ Project 1 measurement campaign complete.
   tail-first degradation, Zipf holds 86.5% vs uniform 64.8% under identical
   pressure, group mode ~96%. Write-up draft + figures.
 - Ops: CI (tests on 3.11/3.12), arm64 release image to GHCR on tags,
-  systemd-managed serving on the Spark, make deploy/status/logs.
+  systemd-managed serving on the Spark, make deploy/status/logs,
+  Prometheus/Grafana monitoring with provisioned dashboard.

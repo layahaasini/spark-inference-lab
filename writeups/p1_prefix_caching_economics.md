@@ -137,6 +137,17 @@ bash configs/spark_server.sh                    # add --disable-radix-cache for 
 python -m sparklab.p1.experiments.pressure --sessions 16 48 64 72 80 96 128 160
 ```
 
+## Appendix: operations as measurement discipline
+
+A number is only as trustworthy as the process that was serving when it was taken, so the serving path is engineered like part of the instrument:
+
+- **The server is a systemd service, not a shell job.** It survives reboots, restarts on crash — and journald timestamps every restart. That log is a *data-integrity record*: a restart wipes the radix cache, so any measurement window containing one is invalid by rule, and the journal is the audit trail that proves a window was clean. (This campaign ate one silent server kill from an unrelated process on the shared box; the run JSONs survived because results live in git, and the restart was visible instead of mysterious.)
+- **Versions reach the machine through a gate, not an ssh session.** CI runs the test suite on every push — the generator's invariants (determinism, append-only growth, shared head, context caps) are what make traces comparable across runs, so they gate deployment. A git tag builds one immutable arm64 image — the NGC SGLang base *and* the instruments, together — published to a registry; `make deploy` ships committed code only and reports success only after the health check passes. The code that produced every number above is tagged `v0.1.0`.
+- **The serving box is continuously monitored.** Prometheus records the server's own metrics every 5 seconds; a Grafana dashboard shows the cache refund live (prefill tokens computed vs served from cache), TTFT percentiles from the server's histograms, KV-pool occupancy, and a restart detector wired to counter resets. Per-request records remain the source of truth for published numbers — the continuous layer exists to catch what they can't: thermal throttling, memory creep, and restarts *between* measurements.
+- **One rule ties ops to science:** nothing upgrades during a measurement window. The experiment schedule and the deploy schedule are one schedule.
+
+None of this is fleet engineering — it's one box — but it's the difference between "numbers from my laptop session" and numbers a stranger can audit: pinned environment, gated changes, logged serving lifetime, and a manifest per run tying each row to all three.
+
 ## Pre-publication checklist
 
 - [x] Fix warmup to exceed `chunked_prefill_size`; re-run affected sweeps; remove † markers

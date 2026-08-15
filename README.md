@@ -26,6 +26,11 @@ src/sparklab/p1/          Project 1
   experiments/prefix_hit.py cold/warm sanity check — run first, always
   experiments/pressure.py   the main experiment: hit rate + TTFT vs session-count pressure
 configs/spark_server.sh   pinned server launch (NGC container = the environment pin)
+deploy/                   systemd unit for the serving process on the Spark
+deploy/monitoring/        Prometheus + Grafana stack with a provisioned serving dashboard
+.github/workflows/        CI (tests per push) + release-image (arm64 GHCR image per v* tag)
+Dockerfile                the release artifact: NGC SGLang base + this repo baked in
+Makefile                  deploy / status / logs / test / figs from the dev machine
 scripts/make_figs.py      regenerates every figure directly from runs/*.json
 tests/                    15 tests; server-dependent ones skip when no server is up
 runs/                     one JSON per experiment run, manifest embedded — the source of truth
@@ -157,8 +162,11 @@ Code reaches the Spark through a versioned, repeatable path — not ad-hoc ssh:
 - **Releases** ([release-image.yml](.github/workflows/release-image.yml) + [Dockerfile](Dockerfile)): pushing a `v*` tag builds an arm64 image — NGC SGLang base + this repo baked in — and publishes it to GHCR. A version tag names one immutable artifact: environment and instruments together.
 - **Serving** ([deploy/sparklab-server.service](deploy/sparklab-server.service)): the server runs as a systemd user service on the Spark — survives reboots, restarts on crash, and journald records every restart *with a timestamp*. That record matters for data integrity, not just uptime: a silent restart wipes the radix cache and invalidates every measurement taken after it. Overrides (`MEM_FRAC`, `MODEL`, …) live in `~/.config/sparklab/server.env`.
 - **Deploying** ([Makefile](Makefile)): `make deploy` ships the committed tree (refuses a dirty one), reinstalls, restarts the unit, and gates on the health check. `make status` / `make logs` for inspection.
+- **Monitoring** ([deploy/monitoring](deploy/monitoring/README.md)): Prometheus scrapes the server's `/metrics` every 5s; Grafana ships a provisioned dashboard — hit rate, live computed-vs-cached prefill, TTFT p50/p99, KV pool occupancy, and a restart detector that goes red if the server restarted within the hour (a nonzero value during a measurement window invalidates the window). localhost-only, reached by ssh tunnel.
 
 **The one operational rule:** never upgrade anything — code, image, model, flags — during a measurement window. The experiment schedule and the upgrade schedule are one schedule.
+
+Current release: **v0.1.0** (see [CHANGELOG.md](CHANGELOG.md)) — the tagged snapshot of the instruments that produced every number in the Project 1 write-up. Image publication to `ghcr.io/layahaasini/spark-inference-lab` is wired to `v*` tags (the v0.1.0 build is being repaired — runner disk/base-image constraints). Note: the GHCR package inherits the repo's visibility; when the repo flips public, flip the package too.
 
 ---
 
