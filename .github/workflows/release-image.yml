@@ -6,6 +6,7 @@ name: release-image
 on:
   push:
     tags: ["v*"]
+  workflow_dispatch: {}   # manual re-run without re-tagging
 
 permissions:
   contents: read
@@ -16,6 +17,14 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      # The NGC base is 14.4 GB on-disk; pull + build cache + push staging needs
+      # ~2x that, and stock runners have ~20 GB free. Dropping the preinstalled
+      # Android/.NET/Haskell toolchains reclaims ~30 GB. Without this, the
+      # runner dies mid-build with no logs (the v0.1.0 first-attempt failure).
+      - uses: jlumbroso/free-disk-space@v1.3.1
+        with:
+          tool-cache: true
+          swap-storage: false
       - uses: docker/setup-qemu-action@v3   # cross-build: runners are x86_64, the Spark is arm64
       - uses: docker/setup-buildx-action@v3
       - uses: docker/login-action@v3
