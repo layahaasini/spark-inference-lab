@@ -166,7 +166,7 @@ Code reaches the Spark through a versioned, repeatable path — not ad-hoc ssh:
 
 **The one operational rule:** never upgrade anything — code, image, model, flags — during a measurement window. The experiment schedule and the upgrade schedule are one schedule.
 
-Current release: **v0.1.0** (see [CHANGELOG.md](CHANGELOG.md)) — the tagged snapshot of the instruments that produced every number in the Project 1 write-up. Image publication to `ghcr.io/layahaasini/spark-inference-lab` is wired to `v*` tags (the v0.1.0 build is being repaired — runner disk/base-image constraints). Note: the GHCR package inherits the repo's visibility; when the repo flips public, flip the package too.
+Current release: **v0.1.0** (see [CHANGELOG.md](CHANGELOG.md)) — the tagged snapshot of the instruments that produced every number in the Project 1 write-up, published as **`ghcr.io/layahaasini/spark-inference-lab:v0.1.0`** (arm64; NGC SGLang base + instruments in one immutable image). Pulling it on the Spark needs a one-time `docker login ghcr.io` with a token while the repo is private. Note: the GHCR package inherits the repo's visibility; when the repo flips public, flip the package too.
 
 ---
 
