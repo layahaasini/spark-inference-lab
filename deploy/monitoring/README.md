@@ -19,7 +19,11 @@ ssh -L 3001:localhost:3000 cute-spark
 # anonymous viewer access; admin/sparklab to edit
 ```
 
-Nothing binds off-box: all three services use host networking on localhost
-only, reached through the ssh tunnel. Per-request experiment records remain
-the source of truth for published numbers; this catches what they can't —
-thermal throttling, memory creep, and restarts *between* measurements.
+Nothing binds off-box: all four services (Prometheus :9090, Alertmanager
+:9093, Grafana :3000, optional DCGM :9400) run host-networked but are pinned
+to 127.0.0.1 — reached only through ssh tunnels. Alertmanager's UI (tunnel
+9093) is where silences go during planned maintenance; its silences and
+notification log persist in the `am-data` volume. Per-request experiment
+records remain the source of truth for published numbers; this stack catches
+what they can't — thermal throttling, memory creep, and restarts *between*
+measurements.

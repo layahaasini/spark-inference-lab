@@ -2,12 +2,14 @@
 # every 5s, Grafana draws the history. Continuous monitoring catches what
 # per-request records cannot: thermals, memory creep, silent restarts mid-run.
 #
-#   docker compose up -d          # from this directory, on the Spark
-#   ssh -L 3000:localhost:3000 cute-spark   # then open http://localhost:3000
+#   docker compose up -d                     # from this directory, on the Spark
+#   ssh -L 3001:localhost:3000 cute-spark    # dashboard: http://localhost:3001/d/sparklab
+#   (add -L 9093:localhost:9093 to reach the Alertmanager UI for silences)
 #
-# Host networking throughout: Prometheus reaches the server on localhost:30000,
-# Grafana serves on localhost:3000, Prometheus API on localhost:9090 — nothing
-# is exposed off-box; access is by ssh tunnel.
+# Host networking throughout, but every service is pinned to 127.0.0.1 — under
+# host networking the images' defaults bind 0.0.0.0, i.e. the LAN. Nothing here
+# has auth worth trusting off-box (Alertmanager's UI can silence alerts), so
+# localhost + ssh tunnel is the access model, enforced below.
 services:
   prometheus:
     image: prom/prometheus:v3.4.0
@@ -17,24 +19,34 @@ services:
       - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - ./alerts.yml:/etc/prometheus/alerts.yml:ro
       - prom-data:/prometheus
+    # overriding command drops the image's default flags — restate them all
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --web.listen-address=127.0.0.1:9090
 
   alertmanager:
     image: prom/alertmanager:v0.28.1
-    network_mode: host             # API/UI on localhost:9093
+    network_mode: host
     restart: unless-stopped
     volumes:
       - ./alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      - am-data:/alertmanager     # silences + notification log survive restarts
       # secrets (Slack webhook, SMTP password) live outside git:
       - ${HOME}/.config/sparklab:/etc/alertmanager/secrets:ro
     command:
       - --config.file=/etc/alertmanager/alertmanager.yml
+      - --storage.path=/alertmanager
+      - --web.listen-address=127.0.0.1:9093
+      - --cluster.listen-address=   # single node: no gossip listener at all
 
   grafana:
     image: grafana/grafana:11.6.0
     network_mode: host
     restart: unless-stopped
     environment:
-      # box is reachable only via ssh; viewer access is anonymous, edits need admin
+      - GF_SERVER_HTTP_ADDR=127.0.0.1
+      # reachable only via ssh tunnel; viewer access is anonymous, edits need admin
       - GF_SECURITY_ADMIN_PASSWORD=sparklab
       - GF_AUTH_ANONYMOUS_ENABLED=true
       - GF_AUTH_ANONYMOUS_ORG_ROLE=Viewer
@@ -52,7 +64,9 @@ services:
     restart: unless-stopped
     gpus: all
     cap_add: [SYS_ADMIN]
+    command: ["-a", "127.0.0.1:9400"]
 
 volumes:
   prom-data:
+  am-data:
   grafana-data:

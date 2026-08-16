@@ -7,4 +7,4 @@ WORKDIR /workspace/spark-inference-lab
 COPY pyproject.toml README.md ./
 COPY src ./src
 COPY configs ./configs
-RUN pip install --no-cache-dir .
+RUN pip install --no-cache-dir ".[ui]"

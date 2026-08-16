@@ -21,8 +21,15 @@ from ..p1.client import generate
 # same prompt/cached token accounting the experiments use — so the UI's cache
 # behavior is comparable with every other number in the project
 REQUESTS = Counter("sparklab_ui_requests_total", "Inference requests from the web UI", ["status"])
-LATENCY = Histogram("sparklab_ui_request_seconds", "End-to-end UI request latency (seconds)")
+# explicit buckets: default ones top out at 10s, and a 2048-token generation
+# exceeds that — every long request would land in +Inf and pin the p99 at 10s
+LATENCY = Histogram("sparklab_ui_request_seconds", "End-to-end UI request latency (seconds, successes only)",
+                    buckets=(0.05, 0.1, 0.25, 0.5, 1, 2, 5, 10, 20, 40, 60, 120))
 TOKENS = Counter("sparklab_ui_tokens_total", "Prompt-side tokens for UI requests", ["kind"])
+
+# interactive timeout: the client's 300s default is for experiments; here a hung
+# server must surface as a countable error, not park a threadpool slot for 5min
+UI_TIMEOUT_S = 45
 
 app = FastAPI(title="sparklab inference UI")
 
@@ -47,12 +54,15 @@ def index():
 @app.post("/api/generate")
 def api_generate(req: GenRequest):
     try:
-        with LATENCY.time():
-            r = generate(req.prompt, max_new_tokens=req.max_new_tokens)
+        r = generate(req.prompt, max_new_tokens=req.max_new_tokens, timeout=UI_TIMEOUT_S)
     except Exception as e:  # server down, timeout, refused — count it, say why
         REQUESTS.labels(status="error").inc()
         return JSONResponse({"error": str(e)}, status_code=502)
     REQUESTS.labels(status="ok").inc()
+    # observe the client's own measurement, successes only — a context-manager
+    # timer would also record failures (sub-ms refusals, 45s timeouts) into the
+    # same histogram the latency panel presents as success latency
+    LATENCY.observe(r.latency_ms / 1e3)
     TOKENS.labels(kind="prompt").inc(r.prompt_tokens)
     TOKENS.labels(kind="cached").inc(r.cached_tokens)
     return {

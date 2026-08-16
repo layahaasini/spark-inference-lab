@@ -10,7 +10,7 @@
       "id": 1, "type": "timeseries", "title": "Radix cache hit rate",
       "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
       "datasource": { "uid": "prom" },
-      "fieldConfig": { "defaults": { "unit": "percentunit", "min": 0, "max": 1 }, "overrides": [] },
+      "fieldConfig": { "defaults": { "unit": "percentunit", "min": 0, "max": 1, "thresholds": { "mode": "absolute", "steps": [ { "color": "red", "value": null }, { "color": "green", "value": 0.30 } ] } }, "overrides": [] },
       "targets": [ { "expr": "sglang:cache_hit_rate", "legendFormat": "hit rate", "refId": "A" } ]
     },
     {
@@ -97,7 +97,7 @@
       "gridPos": { "h": 8, "w": 8, "x": 16, "y": 32 },
       "datasource": { "uid": "prom" },
       "fieldConfig": { "defaults": { "unit": "percentunit", "min": 0, "max": 1 }, "overrides": [] },
-      "targets": [ { "expr": "increase(sparklab_ui_tokens_total{kind=\"cached\"}[10m]) / clamp_min(increase(sparklab_ui_tokens_total{kind=\"prompt\"}[10m]), 1)", "legendFormat": "cached share (10m)", "refId": "A" } ]
+      "targets": [ { "expr": "sum(increase(sparklab_ui_tokens_total{kind=\"cached\"}[10m])) / clamp_min(sum(increase(sparklab_ui_tokens_total{kind=\"prompt\"}[10m])), 1)", "legendFormat": "cached share (10m)", "refId": "A" } ]
     }
   ]
 }

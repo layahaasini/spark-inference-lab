@@ -20,16 +20,32 @@ groups:
           description: "Counter reset detected: the radix cache was wiped. Any measurement window overlapping this period is invalid."
 
       - alert: LowRadixHitRate
-        expr: sglang:cache_hit_rate < 0.30 and sglang:num_running_reqs > 0
+        # traffic gate is a rate over the window, NOT an instantaneous gauge:
+        # a gauge gate (num_running_reqs > 0) empties on any idle scrape and
+        # resets the for-timer, so the alert could never fire on bursty traffic
+        expr: sglang:cache_hit_rate < 0.30 and rate(sglang:num_requests_total[5m]) > 0
         for: 5m
         labels: { severity: warning }
         annotations:
           summary: "Radix hit rate below 30% under load for 5m"
           description: "Sustained low hit rate while serving traffic — eviction thrash or a workload without shared prefixes."
 
-      - alert: UIErrorBurst
-        expr: rate(sparklab_ui_requests_total{status="error"}[5m]) > 0.1
+      - alert: UIDown
+        expr: up{job="ui"} == 0
+        for: 2m
         labels: { severity: warning }
         annotations:
-          summary: "UI request errors exceeding 0.1/s over 5m"
-          description: "The inference UI is failing requests — check sparklab-ui logs and whether the server behind it is healthy."
+          summary: "Inference UI unreachable for 2m"
+          description: "No metrics scrape from localhost:8080 — the one failure the error-ratio alert cannot see. Check systemctl --user status sparklab-ui."
+
+      - alert: UIErrorRatio
+        # a ratio, not an absolute rate: a single-user UI never reaches N req/s,
+        # so 'errors > 0.1/s' could not fire even with every request failing
+        expr: >
+          sum(increase(sparklab_ui_requests_total{status="error"}[5m])) >= 3
+          and sum(increase(sparklab_ui_requests_total{status="error"}[5m]))
+            / clamp_min(sum(increase(sparklab_ui_requests_total[5m])), 1) > 0.5
+        labels: { severity: warning }
+        annotations:
+          summary: "Majority of UI requests failing (last 5m)"
+          description: "The inference UI is failing most requests — check sparklab-ui logs and whether the server behind it is healthy."
