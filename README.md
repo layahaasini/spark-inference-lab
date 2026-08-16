@@ -1,248 +1,124 @@
 # spark-inference-lab
 
-Systems experiments on a DGX Spark (GB10, 128 GB unified memory): inference measurement, kernels, and agentic RL. One repo, one shared benchmarking module — every experiment imports from `sparklab.bench`, so results across projects are produced by the same instruments.
+Systems experiments on a DGX Spark (GB10, 128 GB unified memory): inference measurement, kernels, and agentic RL. One repo, one shared benchmarking module — every result comes from the same instruments.
 
 | # | Project | Question | Status |
 |---|---------|----------|--------|
-| 1 | [Prefix-caching economics](src/sparklab/p1/README.md) | What is prefix caching actually worth for tool-calling agents? | **measurement campaign complete** — [write-up draft](writeups/p1_prefix_caching_economics.md) |
-| 2 | FlashAttention in Triton vs. the serving stack | How close can a hand-written Triton FA kernel get to production attention backends on GB10, and why does the gap exist? | planned |
-| 3 | Tool-Loop Gym: agentic RL on one box | Can the full agentic-RL loop run on a single Spark, and what does prefix caching do to its economics? | planned |
+| 1 | [Prefix-caching economics](src/sparklab/p1/README.md) | What is prefix caching actually worth for tool-calling agents? | **done** — [write-up draft](writeups/p1_prefix_caching_economics.md) |
+| 2 | FlashAttention in Triton vs. the serving stack | How close can a hand-written Triton kernel get to production attention on GB10, and why? | planned |
+| 3 | Tool-Loop Gym: agentic RL on one box | Does the full agentic-RL loop run on one Spark, and what does caching do to its economics? | planned |
 
-**Reporting rule (applies to every write-up):** the Spark's 273 GB/s LPDDR5X is roughly 30× below datacenter HBM. Methodology and relative deltas transfer to big hardware; absolute numbers do not.
+**Reporting rule:** the Spark's 273 GB/s memory is ~30× below datacenter HBM — methodology and relative deltas transfer; absolute numbers don't.
 
----
-
-## Repository layout
+## Repo map
 
 ```
-src/sparklab/bench/       shared benchmarking module
-  timing.py                 percentile summaries (p50/p90/p99 — distributions, never bare means)
-  manifest.py               run manifests: versions, GPU, clocks, seeds, pip-freeze hash,
-                            sglang source commit; degrades gracefully on machines without a GPU
-src/sparklab/p1/          Project 1
-  tracegen.py               synthetic agentic-trace generator (see "The workload" below)
-  client.py                 measured SGLang client: TTFT + the server's own cached_tokens report,
-                            warmup helper, cache flush
-  experiments/prefix_hit.py cold/warm sanity check — run first, always
-  experiments/pressure.py   the main experiment: hit rate + TTFT vs session-count pressure
-src/sparklab/ui/          inference web UI: one-page prompt box with per-request cache stats,
-                          instrumented with its own Prometheus metrics
-configs/spark_server.sh   pinned server launch (NGC container = the environment pin)
-deploy/                   systemd units (sparklab-server, sparklab-ui) + monitoring stack
-  monitoring/               Prometheus + Alertmanager + Grafana: provisioned dashboard,
-                            five alert rules, delivery slots for Slack/email
-deploy/monitoring/        Prometheus + Grafana stack with a provisioned serving dashboard
-.github/workflows/        CI (tests per push) + release-image (arm64 GHCR image per v* tag)
-Dockerfile                the release artifact: NGC SGLang base + this repo baked in
-Makefile                  deploy / status / logs / test / figs from the dev machine
-scripts/make_figs.py      regenerates every figure directly from runs/*.json
-tests/                    15 tests; server-dependent ones skip when no server is up
-runs/                     one JSON per experiment run, manifest embedded — the source of truth
-                          for every published number
-writeups/                 the Project 1 write-up draft + figs/
+src/sparklab/
+  bench/          shared module: percentile timing, run manifests (versions/GPU/seeds per run)
+  p1/             trace generator · measured client · experiments (prefix_hit, pressure)
+  ui/             web UI: prompt box with per-request TTFT + cache stats, own /metrics
+configs/          spark_server.sh — pinned server launch (NGC container = the environment pin)
+deploy/           systemd units (sparklab-server, sparklab-ui)
+  monitoring/     Prometheus + Alertmanager + Grafana: 11-panel dashboard, 5 alert rules
+.github/          CI (tests per push) · release-image (arm64 GHCR image per v* tag)
+Dockerfile        release artifact: NGC SGLang base + this repo, one immutable image
+Makefile          deploy / status / logs / test / figs
+scripts/          make_figs.py — regenerates all figures from runs/*.json
+tests/            20 tests; server-gated ones skip without a live server
+runs/             one JSON per run, manifest embedded — source of truth for every number
+writeups/         Project 1 write-up + figures
 ```
-
-### The workload (what tracegen models)
-
-Agent frameworks assemble context the same way everywhere: a large fixed system-prompt + tool-schema block starts every session (long shared prefix), each turn appends a user step and a tool result at the end and never edits above (append-only), and N sessions interleave against one cache. The generator parameterizes all of it:
-
-| Knob | Flag | Models |
-|---|---|---|
-| Shared prefix size | `--sys-tokens` | the instructions+tools block every session shares |
-| Turns and growth | `--turns`, `--tool-tokens MIN MAX` | per-turn appended tool results |
-| Concurrency | `--sessions` | interleaved sessions competing for cache |
-| Traffic skew | `--zipf-alpha` | 0 = uniform round-robin (honest hard case); >0 = heavy-tail (realistic case) |
-| RL rollout shape | `--group-size` | n samples sharing one full context (GRPO) |
-| Context budget | `--max-session-words` | sessions stop at a limit, like real frameworks at context_len — **required in zipf mode** |
-
-Determinism, append-only growth, the shared head, group sharing, and the context cap are all pinned by tests. "Tokens" are whitespace words at generation time (~4.9× expansion after tokenization); every published count is the server's own tokenizer-true report at replay time.
-
----
 
 ## Setup
 
-### Local development (any machine, no GPU needed)
+**Local (any machine, no GPU):**
 
 ```bash
 git clone https://github.com/layahaasini/spark-inference-lab && cd spark-inference-lab
-python3 -m venv .venv && .venv/bin/pip install -e ".[dev]"
-.venv/bin/pytest          # 13 pass locally; 2 server-gated tests skip
+python3 -m venv .venv && .venv/bin/pip install -e ".[dev,ui]"
+.venv/bin/python -m pytest -q      # 18 pass, 2 server-gated skip
 ```
 
-### On the DGX Spark (or any GB10/arm64 box) — full bootstrap
-
-SGLang runs from NVIDIA's NGC container — the image tag **is** the environment pin (bare-metal python has no sglang install; a `~/sglang` source checkout is for reading, not serving). Prerequisites: docker with GPU support, ssh access, outbound network for the first image/model pulls.
+**Spark (or any arm64 + NVIDIA-docker box) — full bootstrap:**
 
 ```bash
-# 1. code + python environment
 mkdir -p ~/opensource && cd ~/opensource
 git clone https://github.com/layahaasini/spark-inference-lab && cd spark-inference-lab
 python3 -m venv --system-site-packages .venv && .venv/bin/pip install -e ".[dev,ui]"
 
-# 2. serving + UI as supervised services (auto-restart, boot persistence,
-#    journald-timestamped restarts — the measurement-integrity audit trail)
 mkdir -p ~/.config/systemd/user ~/.config/sparklab
-cp deploy/sparklab-server.service deploy/sparklab-ui.service ~/.config/systemd/user/
-systemctl --user daemon-reload
-systemctl --user enable --now sparklab-server sparklab-ui
-loginctl enable-linger          # keep services alive after logout/reboot
+cp deploy/*.service ~/.config/systemd/user/
+systemctl --user daemon-reload && systemctl --user enable --now sparklab-server sparklab-ui
+loginctl enable-linger                          # survive logout/reboot
 
-# 3. monitoring + alerting
-cd deploy/monitoring && docker compose up -d && cd -
+(cd deploy/monitoring && docker compose up -d)  # metrics, dashboard, alerts
 
-# 4. verify everything (first server start pulls the model; allow a few minutes)
-curl -sf http://localhost:30000/health && echo server ok
-curl -sf http://localhost:8080/ >/dev/null && echo ui ok
-curl -sf http://localhost:9090/-/ready && echo prometheus ok
-.venv/bin/python -m pytest -q    # all tests, including the server-gated ones
+curl -sf localhost:30000/health && curl -sf -o /dev/null localhost:8080 && echo all up
 ```
 
-Server settings (model, port, KV-pool fraction, image tag) are overridden in `~/.config/sparklab/server.env`, one `KEY=value` per line — never by editing the scripts. Alert *delivery* (Slack/email) needs one secret only a human can mint: see the 3-step recipe at the top of [deploy/monitoring/alertmanager.yml](deploy/monitoring/alertmanager.yml). Everything binds to localhost only; access is by ssh tunnel (see "Web UI & dashboards" below).
+First server start pulls the model — allow a few minutes. Server settings (`MODEL`, `PORT`, `MEM_FRAC`, `IMAGE`, `SGLANG_BASE_URL`) live in `~/.config/sparklab/server.env`, never in edited scripts. Alert delivery (Slack/email) needs one human-minted secret: recipe at the top of [alertmanager.yml](deploy/monitoring/alertmanager.yml).
 
-Notes: with `--system-site-packages`, pip may skip console scripts that exist system-wide — run pytest as `.venv/bin/python -m pytest`. Alternatively, skip the venv entirely and run from the versioned release image: `docker pull ghcr.io/layahaasini/spark-inference-lab:<tag>` (private repo → `docker login ghcr.io` first).
-
----
-
-## Running
-
-### 1. Start the server (terminal 1)
+## Experiments
 
 ```bash
-bash configs/spark_server.sh
-```
+.venv/bin/python -m sparklab.p1.experiments.prefix_hit    # sanity first: warm must be ~15× faster
+.venv/bin/python -m sparklab.p1.experiments.pressure      # baseline sweep, 2–32 sessions
 
-Pinned defaults: `Qwen/Qwen2.5-0.5B-Instruct`, port 30000, `--mem-fraction-static 0.70`, metrics on. Overrides via environment and passthrough args:
-
-```bash
-MEM_FRAC=0.05 bash configs/spark_server.sh                 # small KV pool → eviction pressure
-bash configs/spark_server.sh --disable-radix-cache          # cache-off baseline
-MODEL=Qwen/Qwen2.5-1.5B-Instruct PORT=30001 bash configs/spark_server.sh
-```
-
-On startup the server prints its computed capacity — **use this printed number**, never your own arithmetic:
-
-```
-max_total_num_tokens=7011191 ...     # at MEM_FRAC=0.70 (a ~7M-token pool: no eviction possible)
-max_total_num_tokens=383544  ...     # at MEM_FRAC=0.05 (the knee-experiment pool)
-```
-
-### 2. Sanity check (terminal 2 — run before anything else)
-
-```bash
-.venv/bin/python -m sparklab.p1.experiments.prefix_hit
-```
-
-Two requests sharing a 19.6k-token prefix, after an untimed warmup request. Healthy output: warm TTFT ~15× below cold, `cached` ≈ `prompt` on the warm request. If the warm request doesn't show a large `cached_tokens`, stop — nothing downstream is worth running.
-
-### 3. Pressure sweeps
-
-```bash
-# baseline (big pool): flat hit rate expected
-.venv/bin/python -m sparklab.p1.experiments.pressure
-
-# the knee experiment (server at MEM_FRAC=0.05):
+# the knee: shrink the pool, sweep past the predicted eviction point
+echo MEM_FRAC=0.05 >> ~/.config/sparklab/server.env && systemctl --user restart sparklab-server
 .venv/bin/python -m sparklab.p1.experiments.pressure --sessions 16 48 64 72 80 96 128 160
 
-# heavy-tail traffic (context cap REQUIRED or hot sessions exceed context_len):
-.venv/bin/python -m sparklab.p1.experiments.pressure --sessions 16 48 64 96 160 \
-    --zipf-alpha 1.1 --max-session-words 5500
+# workload shapes
+.venv/bin/python -m sparklab.p1.experiments.pressure --zipf-alpha 1.1 --max-session-words 5500  # heavy-tail (cap required)
+.venv/bin/python -m sparklab.p1.experiments.pressure --group-size 4                             # GRPO rollout shape
 
-# GRPO rollout shape:
-.venv/bin/python -m sparklab.p1.experiments.pressure --sessions 4 16 64 96 --group-size 4
+# cache-off baseline (flag passthrough needs a manual server run)
+systemctl --user stop sparklab-server && bash configs/spark_server.sh --disable-radix-cache
+
+.venv/bin/python scripts/make_figs.py     # figures, straight from runs/*.json
 ```
 
-Each sweep point starts from a flushed cache. Every run writes `runs/pressure_<timestamp>.json` containing the full manifest (sglang version + source commit, GPU, driver, clocks, seeds, server_info, args) next to the results — a result without its manifest is unciteable.
+Generator knobs: `--sys-tokens` (shared prefix), `--turns` / `--tool-tokens` (growth), `--sessions`, `--zipf-alpha` (0 = uniform hard case, >0 = realistic heavy tail), `--group-size`, `--max-session-words` (context budget). Invariants — determinism, append-only growth, shared head, group sharing, caps — are pinned by tests.
 
-Method notes baked into the harness: warmup exceeds `chunked_prefill_size` (8,192 tokens) because the one-time cost hides in the multi-chunk prefill path — a small warmup warms the wrong path and leaves a ~3 s ghost in the first point's p99; hit rate is summed from per-request server reports, never scraped from aggregate counters; replay is closed-loop per session by construction (an agent turn cannot exist before the previous response).
+Discipline baked into the harness: every sweep point starts from a flushed cache; hit rate is summed from per-request server reports (`cached_tokens`), never scraped counters; warmup exceeds `chunked_prefill_size` so one-time costs stay out of p99; each run writes its manifest beside its results. Use the server's printed `max_total_num_tokens` as pool capacity, never your own arithmetic.
 
-### 4. Tests
+## UI & dashboards
 
-```bash
-.venv/bin/python -m pytest              # generator invariants + bench module
-.venv/bin/python -m pytest -m needs_server   # end-to-end checks (needs live server; SGLANG_BASE_URL to override)
-```
-
-The server-gated tests assert warm-faster-than-cold as a **ratio** (never a fixed ms number) plus the server's own cached-token report, and that a flush actually makes the next request cold.
-
-### 5. Web UI & dashboards
-
-Everything on the Spark binds to localhost only; one ssh command opens all of it from the dev machine (left-hand ports are arbitrary — pick free ones):
+One tunnel opens everything (left-hand ports arbitrary):
 
 ```bash
 ssh -L 8080:localhost:8080 -L 3001:localhost:3000 -L 9093:localhost:9093 cute-spark
 ```
 
-| What | URL | Notes |
-|---|---|---|
-| Inference UI | http://localhost:8080 | type a prompt, get the answer plus TTFT and per-request cache stats; Cmd/Ctrl+Enter sends |
-| Grafana dashboard | http://localhost:3001/d/sparklab | 11 panels: hit rate, live prefill refund, TTFT, KV occupancy, restarts, UI traffic; anonymous viewing, `admin`/`sparklab` to edit |
-| Alertmanager | http://localhost:9093 | active alerts; create silences here during planned maintenance |
-| Prometheus | (tunnel 9090 if needed) | raw queries and alert-rule state |
+| What | URL |
+|---|---|
+| Inference UI — prompt in, answer + TTFT + cache stats out | http://localhost:8080 |
+| Grafana dashboard (anonymous view; `admin`/`sparklab` to edit) | http://localhost:3001/d/sparklab |
+| Alertmanager — active alerts, silences | http://localhost:9093 |
 
-**Measurement-window rule:** stop the UI (`systemctl --user stop sparklab-ui`) before running experiments — its requests write into the same radix cache the experiments measure.
+To watch a request live: `journalctl --user -u sparklab-server -f` narrates each prefill batch's `#cached-token` count while the dashboard's prefill computed-vs-cached panel plots the same event.
 
-### 6. Figures
+## Operations
 
-```bash
-.venv/bin/python scripts/make_figs.py   # writes writeups/figs/*.png
-```
-
-Figures are generated from `runs/*.json` (latest run per workload shape, selected by recorded args) — no hand-entered numbers anywhere. The normalized chart computes each shape's attainable maximum by infinite-cache longest-prefix simulation over the same traces.
-
----
-
-## Deployment & operations
-
-Code reaches the Spark through a versioned, repeatable path — not ad-hoc ssh:
-
-- **CI** ([.github/workflows/ci.yml](.github/workflows/ci.yml)): tests on Python 3.11/3.12 for every push and PR. No green, no deploy.
-- **Releases** ([release-image.yml](.github/workflows/release-image.yml) + [Dockerfile](Dockerfile)): pushing a `v*` tag builds an arm64 image — NGC SGLang base + this repo baked in — and publishes it to GHCR. A version tag names one immutable artifact: environment and instruments together.
-- **Serving** ([deploy/sparklab-server.service](deploy/sparklab-server.service), [sparklab-ui.service](deploy/sparklab-ui.service)): server and UI run as systemd user services on the Spark — survive reboots, restart on crash, and journald records every restart *with a timestamp*. That record matters for data integrity, not just uptime: a silent restart wipes the radix cache and invalidates every measurement taken after it. Overrides (`MEM_FRAC`, `MODEL`, …) live in `~/.config/sparklab/server.env`. Verified by failure drill: container killed → back healthy in 58s, restart alert fired, journal recorded it.
-- **Alerting** ([deploy/monitoring/alerts.yml](deploy/monitoring/alerts.yml)): five rules — server down, server restarted (= measurement window invalid), sustained low hit rate under load, UI down, majority of UI requests failing — routed through Alertmanager with persistent silences. Delivery to Slack/email takes one secret: recipe at the top of [alertmanager.yml](deploy/monitoring/alertmanager.yml).
-- **Deploying** ([Makefile](Makefile)): `make deploy` ships the committed tree (refuses a dirty one), reinstalls, restarts the unit, and gates on the health check. `make status` / `make logs` for inspection.
-- **Monitoring** ([deploy/monitoring](deploy/monitoring/README.md)): Prometheus scrapes the server's `/metrics` every 5s; Grafana ships a provisioned dashboard — hit rate, live computed-vs-cached prefill, TTFT p50/p99, KV pool occupancy, and a restart detector that goes red if the server restarted within the hour (a nonzero value during a measurement window invalidates the window). localhost-only: `ssh -L 3001:localhost:3000 cute-spark`, then http://localhost:3001/d/sparklab.
-
-**The one operational rule:** never upgrade anything — code, image, model, flags — during a measurement window. The experiment schedule and the upgrade schedule are one schedule. The same rule covers traffic: stop `sparklab-ui` (`systemctl --user stop sparklab-ui`) before a measurement window — UI requests write into the same radix cache and KV pool the experiments measure, and a browser tab left open contaminates a run undetectably.
-
-Current release: **v0.1.0** (see [CHANGELOG.md](CHANGELOG.md)) — the tagged snapshot of the instruments that produced every number in the Project 1 write-up, published as **`ghcr.io/layahaasini/spark-inference-lab:v0.1.0`** (arm64; NGC SGLang base + instruments in one immutable image). Pulling it on the Spark needs a one-time `docker login ghcr.io` with a token while the repo is private. Note: the GHCR package inherits the repo's visibility; when the repo flips public, flip the package too.
-
----
+- **CI**: tests on Python 3.11/3.12 per push. **Releases**: a `v*` tag builds the arm64 image to GHCR — current: **v0.2.0**, `ghcr.io/layahaasini/spark-inference-lab:v0.2.0` (see [CHANGELOG](CHANGELOG.md); private repo → `docker login ghcr.io` to pull; package visibility flips with the repo).
+- **Deploy**: `make deploy` — refuses a dirty tree, ships, restarts both units, gates on both health checks. `make status` / `make logs`.
+- **Serving**: both units auto-restart and journal every restart with a timestamp — the audit trail that proves a measurement window was restart-free. Drilled: kill → healthy in 58 s, alert fired, journal record.
+- **Alerts**: server down · server restarted (= window invalid) · low hit rate under load · UI down · UI majority-failing.
+- **The one rule**: nothing upgrades and no UI traffic flows during a measurement window (`systemctl --user stop sparklab-ui` first — UI requests share the measured cache). The experiment schedule and the change schedule are one schedule.
 
 ## Results (Project 1, measured 2026-08-14)
 
-Full narrative and figures: **[the write-up](writeups/p1_prefix_caching_economics.md)**. The five headline results:
+Full narrative: **[the write-up](writeups/p1_prefix_caching_economics.md)**.
 
-**1. The refund.** Prefix caching refunds **~84% of all prefill work** on this trace shape and cuts p50 TTFT **~3.6×** (~134 → ~37 ms) vs `--disable-radix-cache`. The ceiling case: a cold 19.6k-token prompt takes 505 ms; its warm twin takes 33 ms — **15.4×** with 100% of the prefix served from the radix tree.
-
-**2. The knee is predictable.** On a 383,544-token pool, the working-set model — `head + n × per-session-history = pool`, all three quantities measured — predicted eviction onset at **73 sessions**; measured onset landed at **72–80**. The sweep was run twice across separate server restarts; every hit rate reproduced within ~1 point.
-
-**3. Collapse is a slope that lands tail-first.** At 2.2× pool oversubscription the hit rate is still 64.8% (LRU + append-only means every miss re-primes its branch). Across the knee, p99 TTFT rises ~2.6× while p50 moves ~20% — for multi-turn agents the p99 is the contract, and the knee shows up there first.
-
-**4. Traffic shape is worth 22 points.** Under identical pressure, heavy-tail (Zipf α=1.1) traffic holds **86.5%** where uniform falls to **64.8%**. Normalized to each shape's attainable maximum: both achieve **~100% of available hits below the knee** (the raw ~84% ceiling is the workload's property, not the engine's); past it, uniform decays to 77% of attainable while Zipf holds 96%.
-
-**5. RL rollouts are the ceiling workload.** GRPO group sampling (×4) runs at **~96% hit rate** at the lowest latency measured (~22 ms p50), avoiding 13M prefill tokens at 96 sessions — the Project 3 economics preview.
+1. **The refund:** caching returns **~84% of prefill work** and ~3.6× p50 TTFT vs cache-off; ceiling case 505 → 33 ms (15.4×) on a fully shared 19.6k-token prefix.
+2. **The knee is predictable:** working-set model predicted eviction onset at 73 sessions on a 383k-token pool; measured 72–80. Reproduced twice within ~1 point.
+3. **Collapse is a gradual slope and lands tail-first:** 64.8% hit rate even at 2.2× oversubscription; across the knee p99 TTFT rises ~2.6× while p50 barely moves.
+4. **Traffic shape is worth 22 points:** Zipf holds 86.5% where uniform falls to 64.8%; normalized, both capture ~100% of available hits below the knee.
+5. **RL rollouts are the ceiling workload:** GRPO group-of-4 runs at ~96% hit rate, ~22 ms p50 — the Project 3 preview.
 
 | | |
 |---|---|
 | ![hit rate vs sessions](writeups/figs/hit_rate_vs_sessions.png) | ![normalized](writeups/figs/hit_rate_normalized.png) |
 | ![tail-first TTFT](writeups/figs/ttft_tail_first.png) | ![tokens avoided](writeups/figs/tokens_avoided.png) |
 
-**Environment for all numbers:** SGLang `0.5.8+7d51a572` (NGC `nvcr.io/nvidia/sglang:26.02-py3`), driver 580.159.03, GB10, Qwen2.5-0.5B-Instruct BF16 (12 KB KV/token). Per-run manifests in `runs/`.
-
----
-
-## Reproducing a published number
-
-Every table row in the write-up traces to a JSON in `runs/`:
-
-```bash
-python3 - <<'EOF'
-import json, glob
-for p in sorted(glob.glob("runs/pressure_*.json")):
-    d = json.load(open(p)); a = d["manifest"]["args"]
-    shape = "group" if a.get("group_size",1)>1 else ("zipf" if a.get("zipf_alpha",0)>0 else "uniform")
-    print(f"{p}  {shape:8s} sessions={a['sessions']}")
-EOF
-```
-
-Pick the run, read `manifest` for the exact environment, re-run the command in its `args` against the same server config, compare.
+Environment for all numbers: SGLang `0.5.8+7d51a572` (NGC `26.02-py3`), driver 580.159.03, GB10, Qwen2.5-0.5B BF16. **Reproducing:** every table row traces to a `runs/*.json` whose embedded manifest records the exact environment, seeds, and args — re-run the recorded command against the recorded config and compare.
