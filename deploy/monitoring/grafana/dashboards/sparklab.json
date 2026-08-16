@@ -73,6 +73,31 @@
         { "expr": "DCGM_FI_DEV_GPU_TEMP", "legendFormat": "temp °C", "refId": "A" },
         { "expr": "DCGM_FI_DEV_SM_CLOCK", "legendFormat": "SM MHz", "refId": "B" }
       ]
+    },
+    {
+      "id": 9, "type": "timeseries", "title": "UI requests/s by outcome",
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 32 },
+      "datasource": { "uid": "prom" },
+      "fieldConfig": { "defaults": { "unit": "reqps", "min": 0 }, "overrides": [] },
+      "targets": [ { "expr": "sum by (status) (rate(sparklab_ui_requests_total[5m]))", "legendFormat": "{{status}}", "refId": "A" } ]
+    },
+    {
+      "id": 10, "type": "timeseries", "title": "UI request latency p50 / p99",
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 32 },
+      "datasource": { "uid": "prom" },
+      "fieldConfig": { "defaults": { "unit": "s", "min": 0 }, "overrides": [] },
+      "targets": [
+        { "expr": "histogram_quantile(0.50, sum by (le) (rate(sparklab_ui_request_seconds_bucket[5m])))", "legendFormat": "p50", "refId": "A" },
+        { "expr": "histogram_quantile(0.99, sum by (le) (rate(sparklab_ui_request_seconds_bucket[5m])))", "legendFormat": "p99", "refId": "B" }
+      ]
+    },
+    {
+      "id": 11, "type": "timeseries", "title": "UI prompt-token cache share",
+      "description": "Fraction of UI prompt tokens served from the radix cache — the project's headline metric, for live traffic.",
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 32 },
+      "datasource": { "uid": "prom" },
+      "fieldConfig": { "defaults": { "unit": "percentunit", "min": 0, "max": 1 }, "overrides": [] },
+      "targets": [ { "expr": "increase(sparklab_ui_tokens_total{kind=\"cached\"}[10m]) / clamp_min(increase(sparklab_ui_tokens_total{kind=\"prompt\"}[10m]), 1)", "legendFormat": "cached share (10m)", "refId": "A" } ]
     }
   ]
 }

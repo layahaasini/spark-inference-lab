@@ -15,7 +15,19 @@ services:
     restart: unless-stopped
     volumes:
       - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./alerts.yml:/etc/prometheus/alerts.yml:ro
       - prom-data:/prometheus
+
+  alertmanager:
+    image: prom/alertmanager:v0.28.1
+    network_mode: host             # API/UI on localhost:9093
+    restart: unless-stopped
+    volumes:
+      - ./alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      # secrets (Slack webhook, SMTP password) live outside git:
+      - ${HOME}/.config/sparklab:/etc/alertmanager/secrets:ro
+    command:
+      - --config.file=/etc/alertmanager/alertmanager.yml
 
   grafana:
     image: grafana/grafana:11.6.0

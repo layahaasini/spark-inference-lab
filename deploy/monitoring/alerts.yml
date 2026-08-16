@@ -1,0 +1,35 @@
+# Alert rules. Loaded by Prometheus (see prometheus.yml rule_files), routed by
+# Alertmanager. Every rule answers one question: "would this invalidate or
+# block a measurement?"
+groups:
+  - name: sparklab
+    rules:
+      - alert: SGLangDown
+        expr: up{job="sglang"} == 0
+        for: 1m
+        labels: { severity: critical }
+        annotations:
+          summary: "SGLang server unreachable for 1m"
+          description: "No metrics scrape from localhost:30000. Serving is down or wedged; check systemctl --user status sparklab-server and journalctl."
+
+      - alert: SGLangRestarted
+        expr: sum(resets(sglang:num_requests_total[10m])) > 0
+        labels: { severity: warning }
+        annotations:
+          summary: "SGLang restarted within the last 10m"
+          description: "Counter reset detected: the radix cache was wiped. Any measurement window overlapping this period is invalid."
+
+      - alert: LowRadixHitRate
+        expr: sglang:cache_hit_rate < 0.30 and sglang:num_running_reqs > 0
+        for: 5m
+        labels: { severity: warning }
+        annotations:
+          summary: "Radix hit rate below 30% under load for 5m"
+          description: "Sustained low hit rate while serving traffic — eviction thrash or a workload without shared prefixes."
+
+      - alert: UIErrorBurst
+        expr: rate(sparklab_ui_requests_total{status="error"}[5m]) > 0.1
+        labels: { severity: warning }
+        annotations:
+          summary: "UI request errors exceeding 0.1/s over 5m"
+          description: "The inference UI is failing requests — check sparklab-ui logs and whether the server behind it is healthy."

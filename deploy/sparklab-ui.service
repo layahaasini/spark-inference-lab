@@ -1,0 +1,20 @@
+# systemd user service for the inference web UI (FastAPI proxy on localhost:8080).
+# Install alongside sparklab-server.service:
+#   cp deploy/sparklab-ui.service ~/.config/systemd/user/
+#   systemctl --user daemon-reload && systemctl --user enable --now sparklab-ui
+# Access from the dev machine: ssh -L 8080:localhost:8080 cute-spark
+
+[Unit]
+Description=sparklab inference web UI
+After=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/opensource/spark-inference-lab
+EnvironmentFile=-%h/.config/sparklab/server.env
+ExecStart=%h/opensource/spark-inference-lab/.venv/bin/uvicorn sparklab.ui.app:app --host 127.0.0.1 --port 8080
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target

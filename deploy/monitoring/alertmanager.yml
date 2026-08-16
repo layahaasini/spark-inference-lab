@@ -1,0 +1,27 @@
+# Alertmanager routing. The pipeline (rule -> firing alert -> Alertmanager) is
+# fully wired and testable without credentials; DELIVERY needs one secret only
+# you can mint. To enable Slack:
+#   1. create an incoming webhook in your Slack workspace
+#   2. on the Spark: mkdir -p ~/.config/sparklab && echo "<webhook url>" > ~/.config/sparklab/slack_webhook
+#   3. uncomment the slack_configs block below and `docker compose restart alertmanager`
+# Email works the same way via smtp_* fields (see commented block).
+route:
+  receiver: default
+  group_by: [alertname]
+  group_wait: 10s
+  group_interval: 1m
+  repeat_interval: 4h
+
+receivers:
+  - name: default
+    # slack_configs:
+    #   - api_url_file: /etc/alertmanager/secrets/slack_webhook
+    #     channel: "#spark-alerts"
+    #     title: "{{ .CommonAnnotations.summary }}"
+    #     text: "{{ .CommonAnnotations.description }}"
+    # email_configs:
+    #   - to: srilayahaasini@gmail.com
+    #     from: alerts@example.com
+    #     smarthost: smtp.example.com:587
+    #     auth_username: alerts@example.com
+    #     auth_password_file: /etc/alertmanager/secrets/smtp_password

@@ -22,6 +22,7 @@ class GenResult:
     latency_ms: float       # full request wall time
     prompt_tokens: int      # server-reported prompt size
     cached_tokens: int      # server-reported tokens found in the radix cache
+    text: str = ""          # generated text (final chunk is cumulative)
 
     @property
     def hit_rate(self):
@@ -58,6 +59,7 @@ def generate(text, base_url=DEFAULT_BASE_URL, max_new_tokens=8, timeout=300):
         latency_ms=latency,
         prompt_tokens=meta.get("prompt_tokens", 0),
         cached_tokens=meta.get("cached_tokens", 0),
+        text=payload.get("text", ""),
     )
 
 
