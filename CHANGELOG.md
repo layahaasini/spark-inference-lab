@@ -1,5 +1,24 @@
 # Changelog
 
+## v0.2.0 — 2026-08-16
+
+Operations hardening + interactive surface.
+
+- Alerting: five Prometheus rules (server down/restarted, low hit rate,
+  UI down, UI error ratio) via Alertmanager; persistent silences;
+  Slack/email delivery slots.
+- Inference web UI (FastAPI, systemd unit `sparklab-ui`, localhost:8080):
+  prompt box with per-request TTFT + cache stats, own Prometheus metrics,
+  three new dashboard panels.
+- Review pass (10 verified findings fixed): monitoring stack pinned to
+  127.0.0.1 (was LAN-exposed), broken cache-share panel PromQL, alert
+  rules that could never fire at real traffic, latency-histogram buckets
+  and failure-mixing, CI/deploy/image gaps for the ui extra, 45s
+  interactive timeout.
+- Failure drill verified: kill → auto-restart in 58s, restart alert
+  fired, journald record.
+- make deploy/status/logs cover both units; release builds cache layers.
+
 ## v0.1.0 — 2026-08-14
 
 Project 1 measurement campaign complete.

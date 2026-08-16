@@ -25,8 +25,12 @@ src/sparklab/p1/          Project 1
                             warmup helper, cache flush
   experiments/prefix_hit.py cold/warm sanity check — run first, always
   experiments/pressure.py   the main experiment: hit rate + TTFT vs session-count pressure
+src/sparklab/ui/          inference web UI: one-page prompt box with per-request cache stats,
+                          instrumented with its own Prometheus metrics
 configs/spark_server.sh   pinned server launch (NGC container = the environment pin)
-deploy/                   systemd unit for the serving process on the Spark
+deploy/                   systemd units (sparklab-server, sparklab-ui) + monitoring stack
+  monitoring/               Prometheus + Alertmanager + Grafana: provisioned dashboard,
+                            five alert rules, delivery slots for Slack/email
 deploy/monitoring/        Prometheus + Grafana stack with a provisioned serving dashboard
 .github/workflows/        CI (tests per push) + release-image (arm64 GHCR image per v* tag)
 Dockerfile                the release artifact: NGC SGLang base + this repo baked in
@@ -65,21 +69,37 @@ python3 -m venv .venv && .venv/bin/pip install -e ".[dev]"
 .venv/bin/pytest          # 13 pass locally; 2 server-gated tests skip
 ```
 
-### On the DGX Spark
+### On the DGX Spark (or any GB10/arm64 box) — full bootstrap
 
-SGLang runs from NVIDIA's NGC container — the image tag **is** the environment pin (bare-metal python has no sglang install; a `~/sglang` source checkout is for reading, not serving).
+SGLang runs from NVIDIA's NGC container — the image tag **is** the environment pin (bare-metal python has no sglang install; a `~/sglang` source checkout is for reading, not serving). Prerequisites: docker with GPU support, ssh access, outbound network for the first image/model pulls.
 
 ```bash
-# one-time
+# 1. code + python environment
 mkdir -p ~/opensource && cd ~/opensource
 git clone https://github.com/layahaasini/spark-inference-lab && cd spark-inference-lab
-python3 -m venv --system-site-packages .venv && .venv/bin/pip install -e ".[dev]"
+python3 -m venv --system-site-packages .venv && .venv/bin/pip install -e ".[dev,ui]"
 
-# requires: docker with GPU support, nvcr.io/nvidia/sglang image pulled
-docker images | grep sglang   # expect nvcr.io/nvidia/sglang:26.02-py3
+# 2. serving + UI as supervised services (auto-restart, boot persistence,
+#    journald-timestamped restarts — the measurement-integrity audit trail)
+mkdir -p ~/.config/systemd/user ~/.config/sparklab
+cp deploy/sparklab-server.service deploy/sparklab-ui.service ~/.config/systemd/user/
+systemctl --user daemon-reload
+systemctl --user enable --now sparklab-server sparklab-ui
+loginctl enable-linger          # keep services alive after logout/reboot
+
+# 3. monitoring + alerting
+cd deploy/monitoring && docker compose up -d && cd -
+
+# 4. verify everything (first server start pulls the model; allow a few minutes)
+curl -sf http://localhost:30000/health && echo server ok
+curl -sf http://localhost:8080/ >/dev/null && echo ui ok
+curl -sf http://localhost:9090/-/ready && echo prometheus ok
+.venv/bin/python -m pytest -q    # all tests, including the server-gated ones
 ```
 
-Note: with `--system-site-packages`, pip may skip installing console scripts that exist system-wide — run pytest as `.venv/bin/python -m pytest`.
+Server settings (model, port, KV-pool fraction, image tag) are overridden in `~/.config/sparklab/server.env`, one `KEY=value` per line — never by editing the scripts. Alert *delivery* (Slack/email) needs one secret only a human can mint: see the 3-step recipe at the top of [deploy/monitoring/alertmanager.yml](deploy/monitoring/alertmanager.yml). Everything binds to localhost only; access is by ssh tunnel (see "Web UI & dashboards" below).
+
+Notes: with `--system-site-packages`, pip may skip console scripts that exist system-wide — run pytest as `.venv/bin/python -m pytest`. Alternatively, skip the venv entirely and run from the versioned release image: `docker pull ghcr.io/layahaasini/spark-inference-lab:<tag>` (private repo → `docker login ghcr.io` first).
 
 ---
 
@@ -144,7 +164,24 @@ Method notes baked into the harness: warmup exceeds `chunked_prefill_size` (8,19
 
 The server-gated tests assert warm-faster-than-cold as a **ratio** (never a fixed ms number) plus the server's own cached-token report, and that a flush actually makes the next request cold.
 
-### 5. Figures
+### 5. Web UI & dashboards
+
+Everything on the Spark binds to localhost only; one ssh command opens all of it from the dev machine (left-hand ports are arbitrary — pick free ones):
+
+```bash
+ssh -L 8080:localhost:8080 -L 3001:localhost:3000 -L 9093:localhost:9093 cute-spark
+```
+
+| What | URL | Notes |
+|---|---|---|
+| Inference UI | http://localhost:8080 | type a prompt, get the answer plus TTFT and per-request cache stats; Cmd/Ctrl+Enter sends |
+| Grafana dashboard | http://localhost:3001/d/sparklab | 11 panels: hit rate, live prefill refund, TTFT, KV occupancy, restarts, UI traffic; anonymous viewing, `admin`/`sparklab` to edit |
+| Alertmanager | http://localhost:9093 | active alerts; create silences here during planned maintenance |
+| Prometheus | (tunnel 9090 if needed) | raw queries and alert-rule state |
+
+**Measurement-window rule:** stop the UI (`systemctl --user stop sparklab-ui`) before running experiments — its requests write into the same radix cache the experiments measure.
+
+### 6. Figures
 
 ```bash
 .venv/bin/python scripts/make_figs.py   # writes writeups/figs/*.png
@@ -160,7 +197,8 @@ Code reaches the Spark through a versioned, repeatable path — not ad-hoc ssh:
 
 - **CI** ([.github/workflows/ci.yml](.github/workflows/ci.yml)): tests on Python 3.11/3.12 for every push and PR. No green, no deploy.
 - **Releases** ([release-image.yml](.github/workflows/release-image.yml) + [Dockerfile](Dockerfile)): pushing a `v*` tag builds an arm64 image — NGC SGLang base + this repo baked in — and publishes it to GHCR. A version tag names one immutable artifact: environment and instruments together.
-- **Serving** ([deploy/sparklab-server.service](deploy/sparklab-server.service)): the server runs as a systemd user service on the Spark — survives reboots, restarts on crash, and journald records every restart *with a timestamp*. That record matters for data integrity, not just uptime: a silent restart wipes the radix cache and invalidates every measurement taken after it. Overrides (`MEM_FRAC`, `MODEL`, …) live in `~/.config/sparklab/server.env`.
+- **Serving** ([deploy/sparklab-server.service](deploy/sparklab-server.service), [sparklab-ui.service](deploy/sparklab-ui.service)): server and UI run as systemd user services on the Spark — survive reboots, restart on crash, and journald records every restart *with a timestamp*. That record matters for data integrity, not just uptime: a silent restart wipes the radix cache and invalidates every measurement taken after it. Overrides (`MEM_FRAC`, `MODEL`, …) live in `~/.config/sparklab/server.env`. Verified by failure drill: container killed → back healthy in 58s, restart alert fired, journal recorded it.
+- **Alerting** ([deploy/monitoring/alerts.yml](deploy/monitoring/alerts.yml)): five rules — server down, server restarted (= measurement window invalid), sustained low hit rate under load, UI down, majority of UI requests failing — routed through Alertmanager with persistent silences. Delivery to Slack/email takes one secret: recipe at the top of [alertmanager.yml](deploy/monitoring/alertmanager.yml).
 - **Deploying** ([Makefile](Makefile)): `make deploy` ships the committed tree (refuses a dirty one), reinstalls, restarts the unit, and gates on the health check. `make status` / `make logs` for inspection.
 - **Monitoring** ([deploy/monitoring](deploy/monitoring/README.md)): Prometheus scrapes the server's `/metrics` every 5s; Grafana ships a provisioned dashboard — hit rate, live computed-vs-cached prefill, TTFT p50/p99, KV pool occupancy, and a restart detector that goes red if the server restarted within the hour (a nonzero value during a measurement window invalidates the window). localhost-only: `ssh -L 3001:localhost:3000 cute-spark`, then http://localhost:3001/d/sparklab.
 
