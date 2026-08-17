@@ -7,3 +7,4 @@ dist/
 .DS_Store
 trace.json
 runs/server.log
+build/
