@@ -39,7 +39,7 @@ writeups/         Project 1 write-up + figures
 ```bash
 git clone https://github.com/layahaasini/spark-inference-lab && cd spark-inference-lab
 python3 -m venv .venv && .venv/bin/pip install -e ".[dev,ui]"
-.venv/bin/python -m pytest -q      # 18 pass, 2 server-gated skip
+.venv/bin/python -m pytest -q      # 39 pass; server- and GPU-gated tests skip
 ```
 
 **Spark (or any arm64 + NVIDIA-docker box) — full bootstrap:**
