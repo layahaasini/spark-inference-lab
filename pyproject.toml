@@ -33,4 +33,5 @@ sparklab = ["ui/static/*"]
 testpaths = ["tests"]
 markers = [
     "needs_server: requires a running SGLang server (set SGLANG_BASE_URL, default http://localhost:30000)",
+    "needs_gpu: requires a CUDA GPU with Triton (P2 kernels; run inside the pytorch container on the Spark)",
 ]

@@ -5,8 +5,8 @@ Systems experiments on a DGX Spark (GB10, 128 GB unified memory): inference meas
 | # | Project | Question | Status |
 |---|---------|----------|--------|
 | 1 | [Prefix-caching economics](src/sparklab/p1/README.md) | What is prefix caching actually worth for tool-calling agents? | **done** — [write-up draft](writeups/p1_prefix_caching_economics.md) |
-| 2 | FlashAttention in Triton vs. the serving stack | How close can a hand-written Triton kernel get to production attention on GB10, and why? | planned |
-| 3 | Tool-Loop Gym: agentic RL on one box | Does the full agentic-RL loop run on one Spark, and what does caching do to its economics? | planned |
+| 2 | [FlashAttention in Triton vs. the serving stack](src/sparklab/p2/README.md) | How close can a hand-written Triton kernel get to production attention on GB10, and why? | kernels built, GPU-verified — [study guide](docs/p2_reading_companion.md) |
+| 3 | [Tool-Loop Gym: agentic RL on one box](src/sparklab/p3/README.md) | Does the full agentic-RL loop run on one Spark, and what does caching do to its economics? | gym + base-eval built — [study guide](docs/p3_reading_companion.md); training gated on miles |
 
 **Reporting rule:** the Spark's 273 GB/s memory is ~30× below datacenter HBM — methodology and relative deltas transfer; absolute numbers don't.
 
@@ -16,7 +16,10 @@ Systems experiments on a DGX Spark (GB10, 128 GB unified memory): inference meas
 src/sparklab/
   bench/          shared module: percentile timing, run manifests (versions/GPU/seeds per run)
   p1/             trace generator · measured client · experiments (prefix_hit, pressure)
+  p2/             Triton attention kernels (online softmax, FA fwd + causal + GQA) · reference · bench
+  p3/             tool-loop gym: seeded envs · state verifiers with anti-hacking tests · base-eval
   ui/             web UI: prompt box with per-request TTFT + cache stats, own /metrics
+docs/             reading companions for Projects 2 and 3 (same format as the P1 guide)
 configs/          spark_server.sh — pinned server launch (NGC container = the environment pin)
 deploy/           systemd units (sparklab-server, sparklab-ui)
   monitoring/     Prometheus + Alertmanager + Grafana: 11-panel dashboard, 5 alert rules
@@ -24,7 +27,7 @@ deploy/           systemd units (sparklab-server, sparklab-ui)
 Dockerfile        release artifact: NGC SGLang base + this repo, one immutable image
 Makefile          deploy / status / logs / test / figs
 scripts/          make_figs.py — regenerates all figures from runs/*.json
-tests/            20 tests; server-gated ones skip without a live server
+tests/            40 tests; server- and GPU-gated ones skip where hardware is absent
 runs/             one JSON per run, manifest embedded — source of truth for every number
 writeups/         Project 1 write-up + figures
 ```
