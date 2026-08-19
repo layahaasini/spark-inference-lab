@@ -1,0 +1,292 @@
+{
+  "manifest": {
+    "ts": "2026-08-19T20:07:57",
+    "host": "1d616fb166fe",
+    "platform": "Linux-6.17.0-1021-nvidia-aarch64-with-glibc2.39",
+    "python": "3.12.3",
+    "argv": [
+      "/ws/src/sparklab/p2/bench_attn.py",
+      "--causal"
+    ],
+    "versions": {
+      "sglang": "0.5.8+nv26.2",
+      "torch": "2.11.0a0+eb65b36914.nv26.2",
+      "transformers": "4.57.1",
+      "requests": "2.32.5"
+    },
+    "sglang_src_commit": null,
+    "gpu": "NVIDIA GB10, 580.159.03",
+    "clocks_temp": "2509 MHz, 67",
+    "pip_freeze_sha": "4b1366093f9a",
+    "args": {
+      "causal": true,
+      "batch": 1,
+      "dtype": "bfloat16",
+      "out_dir": "runs"
+    },
+    "dispatch": {
+      "torch": "2.11.0a0+eb65b36914.nv26.02",
+      "triton": "3.5.1",
+      "sdpa_backend": "default-dispatch",
+      "flashinfer": "0.6.1+df6e32cb.nv26.02.cu131.43132454",
+      "device": "NVIDIA GB10"
+    }
+  },
+  "results": [
+    {
+      "shape": "qwen2.5-0.5b",
+      "seq": 512,
+      "impl": "triton-fa (ours)",
+      "ms": 0.0265,
+      "tflops": 17.74
+    },
+    {
+      "shape": "qwen2.5-0.5b",
+      "seq": 512,
+      "impl": "naive-torch",
+      "ms": 0.5175,
+      "tflops": 0.91
+    },
+    {
+      "shape": "qwen2.5-0.5b",
+      "seq": 512,
+      "impl": "torch-sdpa",
+      "ms": 0.05,
+      "tflops": 9.39
+    },
+    {
+      "shape": "qwen2.5-0.5b",
+      "seq": 512,
+      "impl": "flashinfer",
+      "ms": 0.0318,
+      "tflops": 14.78
+    },
+    {
+      "shape": "qwen2.5-0.5b",
+      "seq": 2048,
+      "impl": "triton-fa (ours)",
+      "ms": 0.1631,
+      "tflops": 46.1
+    },
+    {
+      "shape": "qwen2.5-0.5b",
+      "seq": 2048,
+      "impl": "naive-torch",
+      "ms": 10.7194,
+      "tflops": 0.7
+    },
+    {
+      "shape": "qwen2.5-0.5b",
+      "seq": 2048,
+      "impl": "torch-sdpa",
+      "ms": 0.1919,
+      "tflops": 39.17
+    },
+    {
+      "shape": "qwen2.5-0.5b",
+      "seq": 2048,
+      "impl": "flashinfer",
+      "ms": 0.1382,
+      "tflops": 54.38
+    },
+    {
+      "shape": "qwen2.5-0.5b",
+      "seq": 8192,
+      "impl": "triton-fa (ours)",
+      "ms": 1.6662,
+      "tflops": 72.17
+    },
+    {
+      "shape": "qwen2.5-0.5b",
+      "seq": 8192,
+      "impl": "naive-torch",
+      "ms": null,
+      "tflops": null,
+      "note": "skipped: N^2 matrix too large"
+    },
+    {
+      "shape": "qwen2.5-0.5b",
+      "seq": 8192,
+      "impl": "torch-sdpa",
+      "ms": 1.5784,
+      "tflops": 76.19
+    },
+    {
+      "shape": "qwen2.5-0.5b",
+      "seq": 8192,
+      "impl": "flashinfer",
+      "ms": 1.3467,
+      "tflops": 89.3
+    },
+    {
+      "shape": "qwen2.5-7b",
+      "seq": 512,
+      "impl": "triton-fa (ours)",
+      "ms": 0.0805,
+      "tflops": 23.33
+    },
+    {
+      "shape": "qwen2.5-7b",
+      "seq": 512,
+      "impl": "naive-torch",
+      "ms": 1.5814,
+      "tflops": 1.19
+    },
+    {
+      "shape": "qwen2.5-7b",
+      "seq": 512,
+      "impl": "torch-sdpa",
+      "ms": 0.1217,
+      "tflops": 15.44
+    },
+    {
+      "shape": "qwen2.5-7b",
+      "seq": 512,
+      "impl": "flashinfer",
+      "ms": 0.0711,
+      "tflops": 26.42
+    },
+    {
+      "shape": "qwen2.5-7b",
+      "seq": 2048,
+      "impl": "triton-fa (ours)",
+      "ms": 0.5116,
+      "tflops": 58.76
+    },
+    {
+      "shape": "qwen2.5-7b",
+      "seq": 2048,
+      "impl": "naive-torch",
+      "ms": 22.3786,
+      "tflops": 1.34
+    },
+    {
+      "shape": "qwen2.5-7b",
+      "seq": 2048,
+      "impl": "torch-sdpa",
+      "ms": 0.6054,
+      "tflops": 49.66
+    },
+    {
+      "shape": "qwen2.5-7b",
+      "seq": 2048,
+      "impl": "flashinfer",
+      "ms": 0.4047,
+      "tflops": 74.3
+    },
+    {
+      "shape": "qwen2.5-7b",
+      "seq": 8192,
+      "impl": "triton-fa (ours)",
+      "ms": 6.6609,
+      "tflops": 72.22
+    },
+    {
+      "shape": "qwen2.5-7b",
+      "seq": 8192,
+      "impl": "naive-torch",
+      "ms": null,
+      "tflops": null,
+      "note": "skipped: N^2 matrix too large"
+    },
+    {
+      "shape": "qwen2.5-7b",
+      "seq": 8192,
+      "impl": "torch-sdpa",
+      "ms": 6.2239,
+      "tflops": 77.29
+    },
+    {
+      "shape": "qwen2.5-7b",
+      "seq": 8192,
+      "impl": "flashinfer",
+      "ms": 5.1827,
+      "tflops": 92.82
+    },
+    {
+      "shape": "llama3-8b",
+      "seq": 512,
+      "impl": "triton-fa (ours)",
+      "ms": 0.0957,
+      "tflops": 22.43
+    },
+    {
+      "shape": "llama3-8b",
+      "seq": 512,
+      "impl": "naive-torch",
+      "ms": 1.7933,
+      "tflops": 1.2
+    },
+    {
+      "shape": "llama3-8b",
+      "seq": 512,
+      "impl": "torch-sdpa",
+      "ms": 0.1347,
+      "tflops": 15.94
+    },
+    {
+      "shape": "llama3-8b",
+      "seq": 512,
+      "impl": "flashinfer",
+      "ms": 0.0799,
+      "tflops": 26.87
+    },
+    {
+      "shape": "llama3-8b",
+      "seq": 2048,
+      "impl": "triton-fa (ours)",
+      "ms": 0.5715,
+      "tflops": 60.12
+    },
+    {
+      "shape": "llama3-8b",
+      "seq": 2048,
+      "impl": "naive-torch",
+      "ms": 25.7299,
+      "tflops": 1.34
+    },
+    {
+      "shape": "llama3-8b",
+      "seq": 2048,
+      "impl": "torch-sdpa",
+      "ms": 0.6953,
+      "tflops": 49.42
+    },
+    {
+      "shape": "llama3-8b",
+      "seq": 2048,
+      "impl": "flashinfer",
+      "ms": 0.4497,
+      "tflops": 76.4
+    },
+    {
+      "shape": "llama3-8b",
+      "seq": 8192,
+      "impl": "triton-fa (ours)",
+      "ms": 7.5406,
+      "tflops": 72.91
+    },
+    {
+      "shape": "llama3-8b",
+      "seq": 8192,
+      "impl": "naive-torch",
+      "ms": null,
+      "tflops": null,
+      "note": "skipped: N^2 matrix too large"
+    },
+    {
+      "shape": "llama3-8b",
+      "seq": 8192,
+      "impl": "torch-sdpa",
+      "ms": 7.1457,
+      "tflops": 76.94
+    },
+    {
+      "shape": "llama3-8b",
+      "seq": 8192,
+      "impl": "flashinfer",
+      "ms": 5.9182,
+      "tflops": 92.89
+    }
+  ]
+}
