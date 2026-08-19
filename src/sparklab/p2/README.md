@@ -2,7 +2,7 @@
 
 **Question:** how close can a hand-written Triton FA kernel get to production attention backends on GB10 — and exactly why does the gap exist?
 **Method:** build the attention line (online softmax → naive attention → FA forward: non-causal → causal → GQA), verify against an FP32 reference at explicit BF16 tolerances, benchmark with `triton.testing.do_bench` on real model shapes (Qwen/Llama head counts and GQA ratios), head-to-head vs torch SDPA and SGLang's backends with a dispatched-code-path column, then borrow one technique from the winner and measure the recovered gap.
-**Result:** in progress — the Oct 1 artifact. Kernels + correctness suite are in place; gap analysis and close-the-gap phase are the remaining sessions.
+**Result (first pass, measured 2026-08-19):** beats torch SDPA at ≤2k context (up to 1.9×) and sits within ~5% at 8k; trails FlashInfer by ~20% at 8k. ncu diagnosis: register-bound occupancy (220 regs/thread → 16.7% theoretical; compute and memory both ~51% — latency-bound, not bandwidth-bound). Warp/stage tuning recovered ~half the FlashInfer gap at 2k (+10% on the 0.5B shape); BLOCK_M=32 and 8-warp variants were rejected by the autotuner at 8k (spills), so the remaining 8k gap is attributable to techniques outside Triton's block-tuning space on sm_121a (warp-specialized/TMA async pipelines à la CUTLASS/FlashInfer). Close-the-gap continues; numbers in runs/attn_bench_*.json.
 
 **Study guide:** [docs/p2_reading_companion.md](../../../docs/p2_reading_companion.md)
 

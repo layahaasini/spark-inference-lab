@@ -26,6 +26,21 @@ import triton.language as tl
         triton.Config({"BLOCK_M": 64, "BLOCK_N": 32}, num_warps=4, num_stages=2),
         triton.Config({"BLOCK_M": 64, "BLOCK_N": 64}, num_warps=4, num_stages=2),
         triton.Config({"BLOCK_M": 128, "BLOCK_N": 64}, num_warps=8, num_stages=2),
+        # ncu at 8192 ctx showed the w4 configs register-bound (220 regs/thread
+        # -> 16.7% theoretical occupancy, compute AND memory both ~51%): the SM
+        # starves for resident warps, not bandwidth. FA2's scheduling lesson:
+        # more warps per block (less register state each) + deeper pipelining.
+        triton.Config({"BLOCK_M": 64, "BLOCK_N": 64}, num_warps=8, num_stages=2),
+        triton.Config({"BLOCK_M": 64, "BLOCK_N": 64}, num_warps=8, num_stages=3),
+        triton.Config({"BLOCK_M": 128, "BLOCK_N": 64}, num_warps=8, num_stages=3),
+        triton.Config({"BLOCK_M": 128, "BLOCK_N": 128}, num_warps=8, num_stages=2),
+        triton.Config({"BLOCK_M": 64, "BLOCK_N": 32}, num_warps=8, num_stages=3),
+        # round 2: the tuner kept w4 at 8k (w8 lost — spills), so attack the
+        # register footprint directly: BLOCK_M=32 halves the per-thread
+        # accumulator, the dominant register consumer at BLOCK_D=128
+        triton.Config({"BLOCK_M": 32, "BLOCK_N": 64}, num_warps=4, num_stages=2),
+        triton.Config({"BLOCK_M": 32, "BLOCK_N": 64}, num_warps=4, num_stages=3),
+        triton.Config({"BLOCK_M": 32, "BLOCK_N": 128}, num_warps=4, num_stages=3),
     ],
     key=["N_K", "BLOCK_D", "IS_CAUSAL"],
 )
