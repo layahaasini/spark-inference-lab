@@ -27,29 +27,45 @@ from .tasks import TEMPLATES
 
 MAX_TURNS = 8
 
+# Qwen-family ChatML markers. Instruct models are trained ON their chat
+# template — raw untemplated text produces rambling, not tool calls. (The
+# first 1.5B eval ran untemplated and scored 0% on every task including
+# difficulty 1; that run is kept in runs/ as the canonical eval-before-train
+# catch.) The transcript stays append-only: each turn appends one assistant
+# block and one user (tool-result) block, never edits above.
+IM_START, IM_END = "<|im_start|>", "<|im_end|>"
 
-def run_episode(episode, base_url, max_new_tokens=128):
+
+def run_episode(episode, base_url, max_new_tokens=192):
     """One closed-loop rollout: model proposes tool calls, env executes them,
     transcript grows append-only (the P1 workload shape, for real this time).
     Returns (success, transcript_stats)."""
     initial = episode.env.snapshot()
     # fixed system block + task goal: the long shared prefix every turn resends
-    ctx = f"SYS: You are an agent operating a key-value store.\n{TOOL_DOCS}\nTASK: {episode.goal}\n"
+    ctx = (f"{IM_START}system\nYou are an agent operating a key-value store.\n"
+           f"{TOOL_DOCS}{IM_END}\n"
+           f"{IM_START}user\nTASK: {episode.goal}{IM_END}\n"
+           f"{IM_START}assistant\n")
     prompt_toks = cached_toks = 0
     for _ in range(MAX_TURNS):
-        r = generate(ctx, base_url=base_url, max_new_tokens=max_new_tokens)
+        r = generate(ctx, base_url=base_url, max_new_tokens=max_new_tokens, stop=[IM_END])
         prompt_toks += r.prompt_tokens
         cached_toks += r.cached_tokens
         call = parse_tool_call(r.text)
         if call is not None:
             name, args = call
             obs = episode.env.call(name, args)
-            # append-only: model turn + tool result, never an edit above
-            ctx += f"\nASSISTANT: {r.text.strip()}\nTOOL_RESULT: {obs}\n"
+            # append-only: close the assistant turn, add the tool result, reopen
+            ctx += (f"{r.text.strip()}{IM_END}\n"
+                    f"{IM_START}user\nTOOL_RESULT: {obs}{IM_END}\n"
+                    f"{IM_START}assistant\n")
             continue
         if is_done(r.text):
             break
-        ctx += f"\nASSISTANT: {r.text.strip()}\nTOOL_RESULT: ERROR: no tool call found; use the TOOL: format or say DONE\n"
+        ctx += (f"{r.text.strip()}{IM_END}\n"
+                f"{IM_START}user\nTOOL_RESULT: ERROR: no tool call found; write exactly one "
+                f"TOOL: {{...}} line, or write DONE if finished{IM_END}\n"
+                f"{IM_START}assistant\n")
     return episode.verify(initial), {"prompt_tokens": prompt_toks, "cached_tokens": cached_toks,
                                      "env_steps": episode.env.steps}
 

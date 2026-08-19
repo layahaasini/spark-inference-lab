@@ -28,6 +28,11 @@ try:  # the production backend under test; lives in the SGLang container
 except ImportError:
     flashinfer = None
 
+try:  # SGLang's own Triton prefill backend (varlen layout, GQA-aware)
+    from sglang.srt.layers.attention.triton_ops.prefill_attention import context_attention_fwd
+except ImportError:
+    context_attention_fwd = None
+
 # real model anatomies, not round numbers
 SHAPES = {
     # name: (n_q_heads, n_kv_heads, head_dim)
@@ -84,6 +89,21 @@ def main():
                 v_fi = v[0].permute(1, 0, 2).contiguous()
                 entries["flashinfer"] = lambda: flashinfer.single_prefill_with_kv_cache(
                     q_fi, k_fi, v_fi, causal=a.causal)
+            if context_attention_fwd is not None and a.batch == 1:
+                # sglang's triton backend wants varlen (total_tokens, H, D) with
+                # per-sequence boundaries; single sequence -> start=[0], len=[n]
+                q_sg = q[0].permute(1, 0, 2).contiguous()
+                k_sg = k[0].permute(1, 0, 2).contiguous()
+                v_sg = v[0].permute(1, 0, 2).contiguous()
+                o_sg = torch.empty_like(q_sg)
+                b_start = torch.zeros(1, dtype=torch.int32, device=dev)
+                b_len = torch.full((1,), n, dtype=torch.int32, device=dev)
+
+                def _sglang_triton():
+                    context_attention_fwd(q_sg, k_sg, v_sg, o_sg, b_start, b_len, n,
+                                          is_causal=a.causal)
+                    return o_sg
+                entries["sglang-triton"] = _sglang_triton
             for label, fn in entries.items():
                 if fn is None:
                     rows.append({"shape": name, "seq": n, "impl": label, "ms": None,

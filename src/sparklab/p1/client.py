@@ -29,16 +29,21 @@ class GenResult:
         return self.cached_tokens / max(self.prompt_tokens, 1)
 
 
-def generate(text, base_url=DEFAULT_BASE_URL, max_new_tokens=8, timeout=300):
+def generate(text, base_url=DEFAULT_BASE_URL, max_new_tokens=8, timeout=300, stop=None):
     """Send one streaming request; return timing plus the server's cache report.
-    max_new_tokens defaults small because Project 1 measures the prompt side."""
+    max_new_tokens defaults small because Project 1 measures the prompt side.
+    stop: optional list of strings that end generation (chat-template turn
+    markers for instruct models — P3's rollouts need this)."""
     t0 = time.perf_counter()
     ttft = None
     last = b""
+    sampling = {"max_new_tokens": max_new_tokens}
+    if stop:
+        sampling["stop"] = stop
     with requests.post(f"{base_url}/generate", stream=True, timeout=timeout, json={
         "text": text,
         "stream": True,
-        "sampling_params": {"max_new_tokens": max_new_tokens},
+        "sampling_params": sampling,
     }) as r:
         r.raise_for_status()
         for line in r.iter_lines():

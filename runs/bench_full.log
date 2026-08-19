@@ -1,0 +1,64 @@
+
+============
+== SGLang ==
+============
+
+NVIDIA Release 26.02 (build 268515453)
+SGLang Version 0.5.8+7d51a572
+Container image Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+
+Various files include modifications (c) NVIDIA CORPORATION & AFFILIATES.  All rights reserved.
+
+GOVERNING TERMS: The software and materials are governed by the NVIDIA Software License Agreement
+(found at https://www.nvidia.com/en-us/agreements/enterprise-software/nvidia-software-license-agreement/)
+and the Product-Specific Terms for NVIDIA AI Products
+(found at https://www.nvidia.com/en-us/agreements/enterprise-software/product-specific-terms-for-ai-products/).
+
+NOTE: CUDA Forward Compatibility mode ENABLED.
+  Using CUDA 13.1 driver version 590.48.01 with kernel driver version 580.159.03.
+  See https://docs.nvidia.com/deploy/cuda-compatibility/ for details.
+
+qwen2.5-0.5b   N=  512 triton-fa (ours)      0.026 ms   18.12 TFLOP/s
+qwen2.5-0.5b   N=  512 naive-torch           0.531 ms    0.89 TFLOP/s
+qwen2.5-0.5b   N=  512 torch-sdpa            0.052 ms    8.97 TFLOP/s
+qwen2.5-0.5b   N=  512 flashinfer            0.032 ms   14.72 TFLOP/s
+qwen2.5-0.5b   N=  512 sglang-triton         0.064 ms    7.39 TFLOP/s
+qwen2.5-0.5b   N= 2048 triton-fa (ours)      0.127 ms   59.13 TFLOP/s
+qwen2.5-0.5b   N= 2048 naive-torch          10.730 ms    0.70 TFLOP/s
+qwen2.5-0.5b   N= 2048 torch-sdpa            0.192 ms   39.16 TFLOP/s
+qwen2.5-0.5b   N= 2048 flashinfer            0.138 ms   54.43 TFLOP/s
+qwen2.5-0.5b   N= 2048 sglang-triton         0.258 ms   29.13 TFLOP/s
+qwen2.5-0.5b   N= 8192 triton-fa (ours)      1.504 ms   79.95 TFLOP/s
+qwen2.5-0.5b   N= 8192 torch-sdpa            1.589 ms   75.66 TFLOP/s
+qwen2.5-0.5b   N= 8192 flashinfer            1.365 ms   88.10 TFLOP/s
+qwen2.5-0.5b   N= 8192 sglang-triton         2.596 ms   46.33 TFLOP/s
+qwen2.5-7b     N=  512 triton-fa (ours)      0.079 ms   23.93 TFLOP/s
+qwen2.5-7b     N=  512 naive-torch           1.581 ms    1.19 TFLOP/s
+qwen2.5-7b     N=  512 torch-sdpa            0.118 ms   15.94 TFLOP/s
+qwen2.5-7b     N=  512 flashinfer            0.073 ms   25.67 TFLOP/s
+qwen2.5-7b     N=  512 sglang-triton         0.102 ms   18.51 TFLOP/s
+qwen2.5-7b     N= 2048 triton-fa (ours)      0.451 ms   66.69 TFLOP/s
+qwen2.5-7b     N= 2048 naive-torch          22.533 ms    1.33 TFLOP/s
+qwen2.5-7b     N= 2048 torch-sdpa            0.632 ms   47.53 TFLOP/s
+qwen2.5-7b     N= 2048 flashinfer            0.405 ms   74.30 TFLOP/s
+qwen2.5-7b     N= 2048 sglang-triton         0.649 ms   46.35 TFLOP/s
+qwen2.5-7b     N= 8192 triton-fa (ours)      5.780 ms   83.22 TFLOP/s
+qwen2.5-7b     N= 8192 torch-sdpa            6.327 ms   76.03 TFLOP/s
+qwen2.5-7b     N= 8192 flashinfer            5.203 ms   92.46 TFLOP/s
+qwen2.5-7b     N= 8192 sglang-triton         8.387 ms   57.36 TFLOP/s
+llama3-8b      N=  512 triton-fa (ours)      0.090 ms   23.94 TFLOP/s
+llama3-8b      N=  512 naive-torch           1.802 ms    1.19 TFLOP/s
+llama3-8b      N=  512 torch-sdpa            0.132 ms   16.21 TFLOP/s
+llama3-8b      N=  512 flashinfer            0.081 ms   26.43 TFLOP/s
+llama3-8b      N=  512 sglang-triton         0.107 ms   20.13 TFLOP/s
+llama3-8b      N= 2048 triton-fa (ours)      0.507 ms   67.82 TFLOP/s
+llama3-8b      N= 2048 naive-torch          25.906 ms    1.33 TFLOP/s
+llama3-8b      N= 2048 torch-sdpa            0.690 ms   49.78 TFLOP/s
+llama3-8b      N= 2048 flashinfer            0.473 ms   72.68 TFLOP/s
+llama3-8b      N= 2048 sglang-triton         0.719 ms   47.78 TFLOP/s
+llama3-8b      N= 8192 triton-fa (ours)      6.512 ms   84.42 TFLOP/s
+llama3-8b      N= 8192 torch-sdpa            7.204 ms   76.31 TFLOP/s
+llama3-8b      N= 8192 flashinfer            5.960 ms   92.25 TFLOP/s
+llama3-8b      N= 8192 sglang-triton        10.045 ms   54.73 TFLOP/s
+
+wrote runs/attn_bench_2026-08-19T20-40-39.json
