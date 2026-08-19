@@ -25,7 +25,10 @@ Available tools:
   delete {"key": k}             -> removes k, says "OK"
   keys   {}                     -> the sorted list of all keys
 
-When the task is complete, write exactly: DONE
+Example: to store the number 5 at key "x", write exactly this line:
+TOOL: {"name": "write", "args": {"key": "x", "value": 5}}
+
+Call one tool per turn. When the task is complete, write exactly: DONE
 """
 
 
@@ -72,16 +75,37 @@ class ToolEnv:
 
 
 def parse_tool_call(text):
-    """Find the first 'TOOL: {...}' line in model output. Returns (name, args)
-    or None. Tolerant of surrounding prose; strict about the JSON itself —
-    a malformed call is a miss, and the model gets told so."""
+    """Find the first tool call in model output. Returns (name, args) or None.
+
+    Lenient about the envelope, strict about the content: accepts the canonical
+    'TOOL: {...}' line, a bare JSON object with a "name" field, or the
+    'WRITE {...}' style small models produce (verb + JSON args) — the first
+    1.5B calibration showed models issuing correct calls in near-miss formats,
+    and an executor that rejects correct intent on envelope grounds measures
+    formatting, not competence. Success still comes only from env state."""
+    known = {"read", "write", "incr", "delete", "keys"}
     for line in text.splitlines():
-        line = line.strip()
+        line = line.strip().strip("`")
+        if not line:
+            continue
         if line.startswith("TOOL:"):
             try:
                 obj = json.loads(line[len("TOOL:"):].strip())
-                return obj["name"], obj.get("args", {})
+                return obj["name"], obj.get("args", obj.get("arguments", {}))
             except (json.JSONDecodeError, KeyError, TypeError):
+                return "__malformed__", {}
+        if line.startswith("{"):
+            try:
+                obj = json.loads(line)
+                if isinstance(obj, dict) and "name" in obj:
+                    return obj["name"], obj.get("args", obj.get("arguments", {}))
+            except json.JSONDecodeError:
+                pass
+        head, _, rest = line.partition(" ")
+        if head.lower() in known and rest.strip().startswith("{"):
+            try:
+                return head.lower(), json.loads(rest.strip())
+            except json.JSONDecodeError:
                 return "__malformed__", {}
     return None
 

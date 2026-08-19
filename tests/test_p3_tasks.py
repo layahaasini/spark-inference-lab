@@ -77,3 +77,9 @@ def test_tool_call_parsing():
     assert parse_tool_call("TOOL: {broken json") == ("__malformed__", {})
     assert parse_tool_call("no call here") is None
     assert is_done("all set\nDONE") and not is_done("DONE-ish")
+    # lenient envelopes, same content: the near-miss formats real models emit
+    assert parse_tool_call('WRITE {"key": "x", "value": 5}') == ("write", {"key": "x", "value": 5})
+    assert parse_tool_call('{"name": "read", "arguments": {"key": "k0"}}') == ("read", {"key": "k0"})
+    assert parse_tool_call('`TOOL: {"name": "keys", "args": {}}`') == ("keys", {})
+    assert parse_tool_call("SHOUT {not json") is None            # unknown verb: not a call at all
+    assert parse_tool_call("WRITE {not json") == ("__malformed__", {})  # known verb, broken args
