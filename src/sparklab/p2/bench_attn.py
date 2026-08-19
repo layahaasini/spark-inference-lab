@@ -23,6 +23,11 @@ from ..bench import collect_manifest
 from .kernels.flash_attn import flash_attention
 from .reference import naive_attention, sdpa_attention
 
+try:  # the production backend under test; lives in the SGLang container
+    import flashinfer
+except ImportError:
+    flashinfer = None
+
 # real model anatomies, not round numbers
 SHAPES = {
     # name: (n_q_heads, n_kv_heads, head_dim)
@@ -71,12 +76,27 @@ def main():
                 "naive-torch": (lambda: naive_attention(q, k, v, causal=a.causal)) if n <= 2048 else None,
                 "torch-sdpa": lambda: sdpa_attention(q, k, v, causal=a.causal),
             }
+            if flashinfer is not None and a.batch == 1:
+                # flashinfer's single-request prefill wants NHD layout (seq, heads, dim);
+                # convert once outside the timed region — layout is a setup cost here
+                q_fi = q[0].permute(1, 0, 2).contiguous()
+                k_fi = k[0].permute(1, 0, 2).contiguous()
+                v_fi = v[0].permute(1, 0, 2).contiguous()
+                entries["flashinfer"] = lambda: flashinfer.single_prefill_with_kv_cache(
+                    q_fi, k_fi, v_fi, causal=a.causal)
             for label, fn in entries.items():
                 if fn is None:
                     rows.append({"shape": name, "seq": n, "impl": label, "ms": None,
                                  "tflops": None, "note": "skipped: N^2 matrix too large"})
                     continue
-                ms = bench_one(fn)
+                try:
+                    ms = bench_one(fn)
+                except Exception as e:
+                    # on sm_121a a backend refusing a shape IS a result — record it
+                    rows.append({"shape": name, "seq": n, "impl": label, "ms": None,
+                                 "tflops": None, "note": f"FAILED: {type(e).__name__}: {str(e)[:200]}"})
+                    print(f"{name:14s} N={n:5d} {label:18s}   FAILED ({type(e).__name__})")
+                    continue
                 rows.append({"shape": name, "seq": n, "impl": label, "ms": round(ms, 4),
                              "tflops": round(fl / (ms * 1e-3) / 1e12, 2)})
                 print(f"{name:14s} N={n:5d} {label:18s} {ms:8.3f} ms  {rows[-1]['tflops'] or 0:6.2f} TFLOP/s")
@@ -85,6 +105,7 @@ def main():
         "args": vars(a),
         "dispatch": {"torch": torch.__version__, "triton": triton.__version__,
                      "sdpa_backend": str(sdpa_backend),
+                     "flashinfer": getattr(flashinfer, "__version__", None) if flashinfer else "not installed",
                      "device": torch.cuda.get_device_name(0)},
     })
     out = pathlib.Path(a.out_dir) / f"attn_bench_{manifest['ts'].replace(':', '-')}.json"
