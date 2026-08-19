@@ -1,0 +1,92 @@
+{
+  "manifest": {
+    "ts": "2026-08-19T14:18:49",
+    "host": "spark-4ed6",
+    "platform": "Linux-6.17.0-1021-nvidia-aarch64-with-glibc2.39",
+    "python": "3.12.3",
+    "argv": [
+      "/home/haasini/opensource/spark-inference-lab/src/sparklab/p3/eval_base.py",
+      "--episodes",
+      "20"
+    ],
+    "versions": {
+      "sglang": null,
+      "torch": null,
+      "transformers": null,
+      "requests": "2.31.0"
+    },
+    "sglang_src_commit": null,
+    "gpu": "NVIDIA GB10, 580.159.03",
+    "clocks_temp": "2444 MHz, 69",
+    "pip_freeze_sha": "ed183331491f",
+    "args": {
+      "base_url": "http://localhost:30000",
+      "episodes": 20,
+      "tasks": [
+        "cleanup_threshold",
+        "copy_value",
+        "increment_counter",
+        "largest_key",
+        "sum_two_keys",
+        "write_constant"
+      ],
+      "out_dir": "runs"
+    }
+  },
+  "results": [
+    {
+      "task": "cleanup_threshold",
+      "difficulty": 3,
+      "success_rate": 0.05,
+      "band": "too hard",
+      "prompt_tokens": 57874,
+      "cached_tokens": 47502,
+      "rollout_hit_rate": 0.820783080485192
+    },
+    {
+      "task": "copy_value",
+      "difficulty": 2,
+      "success_rate": 0.2,
+      "band": "TRAINABLE",
+      "prompt_tokens": 55263,
+      "cached_tokens": 46704,
+      "rollout_hit_rate": 0.8451224146354704
+    },
+    {
+      "task": "increment_counter",
+      "difficulty": 2,
+      "success_rate": 0.7,
+      "band": "too easy",
+      "prompt_tokens": 40201,
+      "cached_tokens": 34105,
+      "rollout_hit_rate": 0.8483619810452476
+    },
+    {
+      "task": "largest_key",
+      "difficulty": 3,
+      "success_rate": 0.0,
+      "band": "too hard",
+      "prompt_tokens": 69890,
+      "cached_tokens": 59476,
+      "rollout_hit_rate": 0.8509944198025469
+    },
+    {
+      "task": "sum_two_keys",
+      "difficulty": 3,
+      "success_rate": 0.0,
+      "band": "too hard",
+      "prompt_tokens": 77176,
+      "cached_tokens": 63975,
+      "rollout_hit_rate": 0.8289494143256971
+    },
+    {
+      "task": "write_constant",
+      "difficulty": 1,
+      "success_rate": 0.95,
+      "band": "too easy",
+      "prompt_tokens": 21315,
+      "cached_tokens": 18597,
+      "rollout_hit_rate": 0.8724841660802252
+    }
+  ]
+}

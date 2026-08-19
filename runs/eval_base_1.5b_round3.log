@@ -1,0 +1,8 @@
+cleanup_threshold    diff=3  success= 5.0%  [too hard ]  rollout hit=82.1%
+copy_value           diff=2  success=20.0%  [TRAINABLE]  rollout hit=84.5%
+increment_counter    diff=2  success=70.0%  [too easy ]  rollout hit=84.8%
+largest_key          diff=3  success= 0.0%  [too hard ]  rollout hit=85.1%
+sum_two_keys         diff=3  success= 0.0%  [too hard ]  rollout hit=82.9%
+write_constant       diff=1  success=95.0%  [too easy ]  rollout hit=87.2%
+
+wrote runs/base_eval_2026-08-19T14-18-49.json

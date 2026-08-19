@@ -2,7 +2,7 @@
 
 **Question:** can the full agentic-RL loop — environments, verifiers, GRPO, SGLang rollouts — run on a single Spark, and what does prefix caching do to its economics?
 **Method:** parameterized multi-turn tool-call task templates (seeded, machine-checkable, difficulty ladder 1→3), env-state verifiers that never trust model text, an anti-reward-hacking negative test per template, a base-success eval that gates the training mix to the 10–60% band, then GRPO via miles with SGLang rollouts — with P1's radix instrumentation running *inside* the training loop.
-**Result:** in progress — the mid-Nov artifact set. Gym + verifiers + base-eval built; the training run is gated on the miles integration.
+**Result (calibration measured 2026-08-19, Qwen2.5-1.5B):** the ladder spans the full range — write_constant 95%, increment_counter 70%, copy_value **20% (in the trainable band)**, cleanup_threshold 5%, largest_key/sum_two_keys 0% — so the training mix starts at copy_value with the harder rung-3 tasks as curriculum headroom. Real multi-turn rollouts run at **82–87% radix hit rate** (the P1↔P3 bridge, measured live). Calibration took three rounds, each catching a real instrument error before training could waste weeks on it: missing chat template (0% everywhere), then format-vs-competence confusion (models issuing correct calls in near-miss envelopes, scored 0). Training run gated on the miles integration (#1714 closed unmerged; watching for a successor).
 
 **Study guide:** [docs/p3_reading_companion.md](../../../docs/p3_reading_companion.md)
 
