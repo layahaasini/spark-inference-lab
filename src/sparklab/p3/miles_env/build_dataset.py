@@ -15,6 +15,7 @@ import json
 import pathlib
 
 from ..tasks import TEMPLATES
+from .tools import TOOL_SPECS
 
 DEFAULT_MIX = {"copy_value": 6, "increment_counter": 2, "cleanup_threshold": 2}  # per 10 rows
 
@@ -40,6 +41,11 @@ def main():
             "prompt": [{"role": "user", "content": ep.goal}],
             "label": "",                              # verifier is stateful; no text label
             "metadata": {"task": task, "seed": seed},
+            # tools must ride IN the row (--tool-key tools): the dataset loader
+            # applies the chat template at load time, and a template applied
+            # without tools leaves the model writing prose about the task
+            # instead of calling tools (the all-zero-rewards smoke lesson)
+            "tools": TOOL_SPECS,
         })
     out = pathlib.Path(a.out)
     out.parent.mkdir(parents=True, exist_ok=True)

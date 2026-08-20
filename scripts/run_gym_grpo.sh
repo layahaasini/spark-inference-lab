@@ -74,7 +74,7 @@ ray job submit --address="http://127.0.0.1:8265" \
   --log-multi-turn \
   \
   --prompt-data "$DATA" \
-  --input-key prompt --label-key label --metadata-key metadata \
+  --input-key prompt --label-key label --metadata-key metadata --tool-key tools \
   --apply-chat-template --rollout-shuffle --rollout-seed 42 \
   \
   --num-rollout 50 \
