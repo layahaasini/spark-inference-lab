@@ -28,17 +28,32 @@ mkdir -p "$OUT"
 
 python3 -m sparklab.p3.miles_env.build_dataset --out "$DATA" --rows 500
 
-MODEL_ARGS_LINE="$(python3 miles/utils/external_utils/model_args_utils.py qwen2.5-1.5B)"
-read -ra MODEL_ARGS <<< "${MODEL_ARGS_LINE}"
-# the preset emits no rope flag; Qwen2.5's config uses rope_theta 1e6 and
-# miles' hf_validate_args rightly refuses the Megatron default of 10000
-MODEL_ARGS+=(--rotary-base 1000000)
-
 if [ "$LORA" = "1" ]; then
-    BACKEND_ARGS=(--lora-rank 32 --lora-alpha 32 --lora-dropout 0.0
-                  --target-modules all-linear --megatron-to-hf-mode bridge)
+    # Megatron backend + LoRA. KNOWN BROKEN on GB10 as of miles:latest
+    # (2026-08): the pre-rollout Megatron-bridge -> engine weight sync
+    # corrupts weights (healthy engine, gibberish rollouts). Kept for
+    # retesting; use LORA=0 until fixed upstream.
+    MODEL_ARGS_LINE="$(python3 miles/utils/external_utils/model_args_utils.py qwen2.5-1.5B)"
+    read -ra MODEL_ARGS <<< "${MODEL_ARGS_LINE}"
+    # the preset emits no rope flag; Qwen2.5 uses rope_theta 1e6 and
+    # miles' hf_validate_args rightly refuses Megatron's default 10000
+    MODEL_ARGS+=(--rotary-base 1000000)
+    BACKEND_ARGS=("${MODEL_ARGS[@]}"
+                  --lora-rank 32 --lora-alpha 32 --lora-dropout 0.0
+                  --target-modules all-linear --megatron-to-hf-mode bridge
+                  --tensor-model-parallel-size 1 --pipeline-model-parallel-size 1
+                  --context-parallel-size 1
+                  --attention-dropout 0.0 --hidden-dropout 0.0
+                  --accumulate-allreduce-grads-in-fp32 --attention-softmax-in-fp32
+                  --attention-backend "$ATTN_BACKEND")
 else
-    BACKEND_ARGS=(--train-backend fsdp)
+    # FSDP backend: full fine-tune, torch-native, no Megatron/TE in the
+    # trainer path; attn via classic flash_attention_2 (verified on GB10)
+    BACKEND_ARGS=(--train-backend fsdp
+                  --load "$MODEL" --ref-load "$MODEL"
+                  --gradient-checkpointing
+                  --attn-implementation flash_attention_2
+                  --update-weight-buffer-size 536870912)
 fi
 SMOKE_ARGS=()
 [ "$SMOKE" = "1" ] && SMOKE_ARGS=(--debug-exit-after-rollout 2)
@@ -49,7 +64,6 @@ ray start --head --node-ip-address 127.0.0.1 --num-gpus 1 --disable-usage-stats
 ray job submit --address="http://127.0.0.1:8265" \
   --runtime-env-json='{"env_vars":{"PYTHONPATH":"/root/Megatron-LM:/root/miles:/ws/src","CUDA_DEVICE_MAX_CONNECTIONS":"1"}}' \
   -- python3 train.py \
-  "${MODEL_ARGS[@]}" \
   --hf-checkpoint "$MODEL" \
   "${BACKEND_ARGS[@]}" \
   --save "$OUT/ckpt" --save-interval 20 \
@@ -75,12 +89,7 @@ ray job submit --address="http://127.0.0.1:8265" \
   --optimizer adam --lr 1e-5 --lr-decay-style constant \
   --weight-decay 0.1 --adam-beta1 0.9 --adam-beta2 0.98 \
   \
-  --tensor-model-parallel-size 1 --pipeline-model-parallel-size 1 \
-  --context-parallel-size 1 \
   --use-dynamic-batch-size --max-tokens-per-gpu 8192 \
-  --attention-dropout 0.0 --hidden-dropout 0.0 \
-  --accumulate-allreduce-grads-in-fp32 --attention-softmax-in-fp32 \
-  --attention-backend "$ATTN_BACKEND" \
   \
   --rollout-num-gpus 1 --rollout-num-gpus-per-engine 1 \
   --sglang-mem-fraction-static 0.35 \
