@@ -19,13 +19,16 @@ OUT="${OUT:-/ws/runs/grpo_gym}"
 
 export PYTHONUNBUFFERED=1
 export CUDA_DEVICE_MAX_CONNECTIONS=1
+export PYTHONPATH="/ws/src${PYTHONPATH:+:$PYTHONPATH}"
 mkdir -p "$OUT"
 
-python3 -m sparklab.p3.miles_env.build_dataset --out "$DATA" --rows 500 \
-    || PYTHONPATH=/ws/src python3 -m sparklab.p3.miles_env.build_dataset --out "$DATA" --rows 500
+python3 -m sparklab.p3.miles_env.build_dataset --out "$DATA" --rows 500
 
 MODEL_ARGS_LINE="$(python3 miles/utils/external_utils/model_args_utils.py qwen2.5-1.5B)"
 read -ra MODEL_ARGS <<< "${MODEL_ARGS_LINE}"
+# the preset emits no rope flag; Qwen2.5's config uses rope_theta 1e6 and
+# miles' hf_validate_args rightly refuses the Megatron default of 10000
+MODEL_ARGS+=(--rotary-base 1000000)
 
 if [ "$LORA" = "1" ]; then
     BACKEND_ARGS=(--lora-rank 32 --lora-alpha 32 --lora-dropout 0.0
