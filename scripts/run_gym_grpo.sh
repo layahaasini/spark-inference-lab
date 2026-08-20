@@ -13,6 +13,10 @@ set -euo pipefail
 
 SMOKE="${SMOKE:-1}"
 LORA="${LORA:-1}"
+# trainer attention: 'flash' routes to flash-attn's CuTe-DSL fwd, which fails
+# MLIR compilation on sm_121a (layout congruence, flash_fwd.py epilogue);
+# 'fused' = TE/cuDNN, 'unfused' = plain softmax (slow, bulletproof)
+ATTN_BACKEND="${ATTN_BACKEND:-fused}"
 MODEL="${MODEL:-Qwen/Qwen2.5-1.5B-Instruct}"
 DATA="${DATA:-/ws/data/gym_train.jsonl}"
 OUT="${OUT:-/ws/runs/grpo_gym}"
@@ -76,7 +80,7 @@ ray job submit --address="http://127.0.0.1:8265" \
   --use-dynamic-batch-size --max-tokens-per-gpu 8192 \
   --attention-dropout 0.0 --hidden-dropout 0.0 \
   --accumulate-allreduce-grads-in-fp32 --attention-softmax-in-fp32 \
-  --attention-backend flash \
+  --attention-backend "$ATTN_BACKEND" \
   \
   --rollout-num-gpus 1 --rollout-num-gpus-per-engine 1 \
   --sglang-mem-fraction-static 0.35 \
