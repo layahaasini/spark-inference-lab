@@ -17,6 +17,10 @@ LORA="${LORA:-1}"
 # MLIR compilation on sm_121a (layout congruence, flash_fwd.py epilogue);
 # 'fused' = TE/cuDNN, 'unfused' = plain softmax (slow, bulletproof)
 ATTN_BACKEND="${ATTN_BACKEND:-fused}"
+# 1e-5 collapsed the policy in 10 rollouts (reward hit 0.5 at r5, then the
+# large-advantage update at 10x the reference LR broke it: lengths 215 -> 7,
+# reward -> 0). miles' own full-FT example uses 1e-6.
+LR="${LR:-1e-6}"
 MODEL="${MODEL:-Qwen/Qwen2.5-1.5B-Instruct}"
 DATA="${DATA:-/ws/data/gym_train.jsonl}"
 OUT="${OUT:-/ws/runs/grpo_gym}"
@@ -86,7 +90,7 @@ ray job submit --address="http://127.0.0.1:8265" \
   --eps-clip 0.2 --eps-clip-high 0.28 \
   --kl-loss-coef 0.0 --kl-coef 0.0 --entropy-coef 0.0 \
   \
-  --optimizer adam --lr 1e-5 --lr-decay-style constant \
+  --optimizer adam --lr "$LR" --lr-decay-style constant \
   --weight-decay 0.1 --adam-beta1 0.9 --adam-beta2 0.98 \
   \
   --use-dynamic-batch-size --max-tokens-per-gpu 8192 \
