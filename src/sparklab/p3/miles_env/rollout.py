@@ -64,7 +64,14 @@ async def generate(input: GenerateFnInput) -> GenerateFnOutput:
         await update_sample_from_response(args, sample, payload=payload, output=output, update_loss_mask=True)
         if meta_info["finish_reason"]["type"] in ("abort", "length"):
             break
-        _, tool_calls = tool_call_parser.parse_non_stream(output["text"])
+        try:
+            _, tool_calls = tool_call_parser.parse_non_stream(output["text"])
+        except Exception:
+            # a response mangled enough to make the parser RAISE (seen once at
+            # rollout ~40: malformed <tool_call> markup) is an episode outcome,
+            # not an infrastructure error — same rule the env applies to bad
+            # tool args; the verifier will score whatever state was reached
+            break
         if len(tool_calls) == 0:
             break  # no tool call = the model considers itself done
         tool_messages = await execute_tool_calls(tool_calls, execute_tool)
