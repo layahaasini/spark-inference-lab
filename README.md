@@ -4,9 +4,9 @@ Systems experiments on a DGX Spark (GB10, 128 GB unified memory): inference meas
 
 | # | Project | Question | Status |
 |---|---------|----------|--------|
-| 1 | [Prefix-caching economics](src/sparklab/p1/README.md) | What is prefix caching actually worth for tool-calling agents? | **done** — [write-up draft](writeups/p1_prefix_caching_economics.md) |
-| 2 | [FlashAttention in Triton vs. the serving stack](src/sparklab/p2/README.md) | How close can a hand-written Triton kernel get to production attention on GB10, and why? | kernels built, GPU-verified — [study guide](docs/p2_reading_companion.md) |
-| 3 | [Tool-Loop Gym: agentic RL on one box](src/sparklab/p3/README.md) | Does the full agentic-RL loop run on one Spark, and what does caching do to its economics? | gym + base-eval built — [study guide](docs/p3_reading_companion.md); training gated on miles |
+| 1 | [Prefix-caching economics](src/sparklab/p1/README.md) | What is prefix caching actually worth for tool-calling agents? | **done** — [write-up draft](writeups/p1_prefix_caching_economics.md) · [guide](docs/p1_reading_companion.pdf) |
+| 2 | [FlashAttention in Triton vs. the serving stack](src/sparklab/p2/README.md) | How close can a hand-written Triton kernel get to production attention on GB10, and why? | **beats SDPA everywhere, within 7–10% of FlashInfer at 8k** — [guide](docs/p2_reading_companion.md) |
+| 3 | [Tool-Loop Gym: agentic RL on one box](src/sparklab/p3/README.md) | Does the full agentic-RL loop run on one Spark, and what does caching do to its economics? | **first GRPO run trained: reward 0.14→0.38, 82.6% rollout prefill cached** — [guide](docs/p3_reading_companion.md) |
 
 **Reporting rule:** the Spark's 273 GB/s memory is ~30× below datacenter HBM — methodology and relative deltas transfer; absolute numbers don't.
 
