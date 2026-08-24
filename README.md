@@ -19,7 +19,7 @@ src/sparklab/
   p2/             Triton attention kernels (online softmax, FA fwd + causal + GQA) · reference · bench
   p3/             tool-loop gym: seeded envs · state verifiers with anti-hacking tests · base-eval
   ui/             web UI: prompt box with per-request TTFT + cache stats, own /metrics
-docs/             reading companions for Projects 2 and 3 (same format as the P1 guide)
+docs/             reading companions for all three projects (P1 as the original PDF)
 configs/          spark_server.sh — pinned server launch (NGC container = the environment pin)
 deploy/           systemd units (sparklab-server, sparklab-ui)
   monitoring/     Prometheus + Alertmanager + Grafana: 11-panel dashboard, 5 alert rules
