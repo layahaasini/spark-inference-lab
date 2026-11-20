@@ -8,4 +8,5 @@ dist/
 trace.json
 runs/server.log
 build/
-runs/grpo_gym/
+runs/p3/grpo_gym/
+data/
