@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "sparklab"
-version = "0.1.0"
+version = "0.2.0"
 description = "Inference, kernel, and agentic-RL experiments on a DGX Spark, with a shared benchmarking module"
 requires-python = ">=3.10"
 dependencies = [

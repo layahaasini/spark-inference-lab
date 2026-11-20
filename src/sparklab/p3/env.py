@@ -1,14 +1,11 @@
 """The tool environment: a tiny key-value store the model manipulates through
-tool calls. Small on purpose — the interesting parts are the discipline around
-it, not the environment itself:
+tool calls.
 
-- state is a plain dict, seeded and deterministic, so every episode replays
-- tools return observation STRINGS (what the model sees); success is judged
-  on STATE (what actually happened) — never on what the model says
-- the transcript is append-only, exactly the P1 workload shape: a fixed
-  system+tool block, then turns that only ever add to the end. That is why
-  rollouts here are the most cache-favorable traffic there is, and why P1's
-  radix instrumentation can meter Project 3's training economics.
+- state is a plain dict, seeded, so every episode can be replayed
+- tools return strings (what the model sees); success is judged on the final
+  state, never on what the model says
+- transcripts are append-only, the same shape as the P1 traces, which is why
+  rollouts get high prefix-cache hit rates
 """
 
 import json
@@ -77,12 +74,10 @@ class ToolEnv:
 def parse_tool_call(text):
     """Find the first tool call in model output. Returns (name, args) or None.
 
-    Lenient about the envelope, strict about the content: accepts the canonical
-    'TOOL: {...}' line, a bare JSON object with a "name" field, or the
-    'WRITE {...}' style small models produce (verb + JSON args) — the first
-    1.5B calibration showed models issuing correct calls in near-miss formats,
-    and an executor that rejects correct intent on envelope grounds measures
-    formatting, not competence. Success still comes only from env state."""
+    Accepts the 'TOOL: {...}' line, a bare JSON object with a "name" field, or
+    'WRITE {...}' (tool name + JSON args). The 1.5B model often made correct
+    calls in these near-miss formats, and rejecting them measured formatting
+    instead of whether it could do the task. Reward still comes only from state."""
     known = {"read", "write", "incr", "delete", "keys"}
     for line in text.splitlines():
         line = line.strip().strip("`")

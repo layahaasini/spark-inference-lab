@@ -2,7 +2,7 @@
 # Install alongside sparklab-server.service:
 #   cp deploy/sparklab-ui.service ~/.config/systemd/user/
 #   systemctl --user daemon-reload && systemctl --user enable --now sparklab-ui
-# Access from the dev machine: ssh -L 8080:localhost:8080 cute-spark
+# Access from the dev machine: ssh -L 8080:localhost:8080 spark
 #
 # If the server moves off port 30000 (PORT= in server.env), set
 # SGLANG_BASE_URL=http://localhost:<port> in the same server.env — the UI reads

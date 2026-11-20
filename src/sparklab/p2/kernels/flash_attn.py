@@ -5,10 +5,9 @@ matrix S is N x N — at 8k context that is 64M floats per head, far too big to
 keep anywhere fast. So tile it: each program owns one BLOCK_M-row slice of Q,
 streams K/V in BLOCK_N-column tiles, and folds each tile into a running
 output using the online-softmax rescale (see online_softmax.py). S never
-exists; the working set is a few tiles in SRAM. That is the entire paper.
+exists; the working set is a few tiles in SRAM.
 
-Two techniques borrowed from the production kernels (FA2/FlashInfer) after
-the ncu gap analysis (see p2/README):
+Two changes made after profiling with ncu (see writeups/p2_flash_attention.md):
 
 - SPLIT LOOP: the causal mask only bites on the diagonal band. The key loop
   runs in two phases — an unmasked body covering tiles that are fully visible
@@ -32,7 +31,7 @@ import torch
 import triton
 import triton.language as tl
 
-LOG2E: tl.constexpr = 1.4426950408889634
+LOG2E = 1.4426950408889634  # log2(e)
 
 
 @triton.jit
@@ -152,7 +151,7 @@ def flash_attention(q, k, v, causal=False):
     o = torch.empty_like(q)
     grid = lambda meta: (triton.cdiv(N_Q, meta["BLOCK_M"]), B * H)
     _fa_fwd[grid](
-        q, k, v, o, D ** -0.5 * 1.4426950408889634,   # sm_scale folded with log2(e)
+        q, k, v, o, D ** -0.5 * LOG2E,   # softmax scale folded with log2(e)
         *q.stride(), *k.stride(), *v.stride(), *o.stride(),
         H, H // H_KV, N_Q, N_K,
         IS_CAUSAL=causal, BLOCK_D=D,

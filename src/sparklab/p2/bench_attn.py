@@ -1,12 +1,9 @@
-"""Head-to-head attention benchmark: our Triton FA vs the stack, on real shapes.
+"""Benchmark our Triton FlashAttention against naive attention, torch SDPA,
+FlashInfer and SGLang's Triton backend, on real model shapes.
 
-Rigor rules (the NVIDIA-panel amendments, encoded):
-- shapes come from REAL model configs (Qwen-class head_dim/GQA ratios), never
-  round numbers — round numbers flatter kernels and match no deployment
-- every row names the dispatched code path + version: "SDPA beat me by 20%"
-  is meaningless without knowing WHICH sdpa backend actually ran
-- timing via triton.testing.do_bench (warmup + many reps + median), never
-  a single eyeballed run
+- shapes come from real model configs (head counts, GQA ratios, head_dim)
+- the manifest records which backend versions actually ran
+- timing uses triton.testing.do_bench (warmup + repeated runs)
 
 Run inside the pytorch container on the Spark:
   python -m sparklab.p2.bench_attn --causal
@@ -33,7 +30,6 @@ try:  # SGLang's own Triton prefill backend (varlen layout, GQA-aware)
 except ImportError:
     context_attention_fwd = None
 
-# real model anatomies, not round numbers
 SHAPES = {
     # name: (n_q_heads, n_kv_heads, head_dim)
     "qwen2.5-0.5b": (14, 2, 64),
@@ -49,17 +45,12 @@ def flops(B, H, N, D, causal):
     return f // 2 if causal else f
 
 
-def bench_one(fn, *args, **kwargs):
-    ms = triton.testing.do_bench(lambda: fn(*args, **kwargs))
-    return ms
-
-
 def main():
     ap = argparse.ArgumentParser(description="Attention kernel head-to-head")
     ap.add_argument("--causal", action="store_true")
     ap.add_argument("--batch", type=int, default=1)
     ap.add_argument("--dtype", default="bfloat16")
-    ap.add_argument("--out-dir", default="runs")
+    ap.add_argument("--out-dir", default="runs/p2")
     a = ap.parse_args()
     dtype = getattr(torch, a.dtype)
     dev = "cuda"
@@ -76,8 +67,7 @@ def main():
 
             entries = {
                 "triton-fa (ours)": lambda: flash_attention(q, k, v, causal=a.causal),
-                # naive materializes N*N floats per head — cap it before it OOMs,
-                # and report the cap: the blow-up IS the finding
+                # naive builds the full N x N score matrix; skip it past 2k so it doesn't OOM
                 "naive-torch": (lambda: naive_attention(q, k, v, causal=a.causal)) if n <= 2048 else None,
                 "torch-sdpa": lambda: sdpa_attention(q, k, v, causal=a.causal),
             }
@@ -110,9 +100,9 @@ def main():
                                  "tflops": None, "note": "skipped: N^2 matrix too large"})
                     continue
                 try:
-                    ms = bench_one(fn)
+                    ms = triton.testing.do_bench(fn)
                 except Exception as e:
-                    # on sm_121a a backend refusing a shape IS a result — record it
+                    # some backends don't support every shape on sm_121a; record the failure
                     rows.append({"shape": name, "seq": n, "impl": label, "ms": None,
                                  "tflops": None, "note": f"FAILED: {type(e).__name__}: {str(e)[:200]}"})
                     print(f"{name:14s} N={n:5d} {label:18s}   FAILED ({type(e).__name__})")

@@ -8,10 +8,11 @@ partial sum whenever a new block raises the max:
     m_new = max(m, max(block))
     l_new = l * exp(m - m_new) + sum(exp(block - m_new))
 
-Same answer, never holds more than one block. Applied inside attention, it is
-what lets the N x N score matrix never exist in memory.
+Same answer, but only one block is held at a time. Inside attention, this is
+what lets FlashAttention avoid building the N x N score matrix.
 """
 
+import torch
 import triton
 import triton.language as tl
 
@@ -41,7 +42,6 @@ def _online_softmax_kernel(X, Y, n_cols, stride_row, BLOCK: tl.constexpr):
 
 def online_softmax(x):
     """Row-wise softmax over the last dim of a 2D tensor, streaming per block."""
-    import torch
     assert x.ndim == 2 and x.is_cuda
     y = torch.empty_like(x)
     _online_softmax_kernel[(x.shape[0],)](x, y, x.shape[1], x.stride(0), BLOCK=1024)

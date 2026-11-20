@@ -2,7 +2,7 @@
 shape, so the profiler has clean launches to attach to. Usage (in-container):
 
   ncu --set detailed --launch-count 3 --kernel-name-base demangled \
-      -k regex:fa_fwd -o /ws/runs/ncu_ours \
+      -k regex:fa_fwd -o /ws/runs/p2/ncu_ours \
       python -m sparklab.p2.profile_attn --impl ours --shape qwen2.5-7b --seq 8192
 """
 

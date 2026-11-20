@@ -1,5 +1,6 @@
 # Operating the lab from the dev machine. `make help` lists targets.
-SPARK_HOST ?= cute-spark
+# ssh host alias for the DGX Spark (override: make deploy SPARK_HOST=myhost)
+SPARK_HOST ?= spark
 REMOTE_DIR ?= opensource/spark-inference-lab
 # systemctl --user over ssh needs the user bus address, which non-login
 # shells don't get for free

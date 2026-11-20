@@ -1,11 +1,10 @@
 """Emit the training/eval jsonl for miles from the calibrated task mix.
 
-Each row: chat-format prompt (the goal; tool specs are injected by the chat
-template at rollout time), and metadata carrying (task, seed) so the rollout
-function can reconstruct the exact seeded environment. The mix defaults to the
-2026-08-19 calibration: copy_value (20% base success, in-band) as the core,
-increment_counter (70%) as the easy stabilizer, cleanup_threshold (5%) as
-curriculum headroom.
+Each row has the goal as a chat prompt, the tool specs, and metadata with
+(task, seed) so the rollout function can rebuild the same seeded env. The
+default mix comes from the calibration run (runs/p3/base_eval_*14-18-49.json):
+copy_value (20% base success) as the main task, increment_counter (70%) as an
+easier one, cleanup_threshold (5%) as a harder one.
 
   python -m sparklab.p3.miles_env.build_dataset --out data/gym_train.jsonl
 """
@@ -41,10 +40,9 @@ def main():
             "prompt": [{"role": "user", "content": ep.goal}],
             "label": "",                              # verifier is stateful; no text label
             "metadata": {"task": task, "seed": seed},
-            # tools must ride IN the row (--tool-key tools): the dataset loader
-            # applies the chat template at load time, and a template applied
-            # without tools leaves the model writing prose about the task
-            # instead of calling tools (the all-zero-rewards smoke lesson)
+            # tools go in the row (--tool-key tools): miles applies the chat
+            # template when it loads the dataset, and without tools there the
+            # model writes prose instead of tool calls (all rewards were 0)
             "tools": TOOL_SPECS,
         })
     out = pathlib.Path(a.out)

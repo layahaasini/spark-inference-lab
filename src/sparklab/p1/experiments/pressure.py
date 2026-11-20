@@ -40,7 +40,7 @@ def run_point(cfg, base_url):
         "prompt_tokens": prompt,
         "cached_tokens": cached,
         "hit_rate": cached / max(prompt, 1),
-        "tokens_avoided": cached,  # the headline: prefill work the cache refunded
+        "tokens_avoided": cached,  # prefill work the cache saved (same as cached_tokens)
     }
 
 
@@ -55,7 +55,7 @@ def main():
     ap.add_argument("--max-session-words", type=int, default=None,
                     help="per-session word budget; required in zipf mode so hot sessions stay under context_len")
     ap.add_argument("--seed", type=int, default=0)
-    ap.add_argument("--out-dir", default="runs")
+    ap.add_argument("--out-dir", default="runs/p1")
     a = ap.parse_args()
 
     manifest = collect_manifest(extra={"server_info": server_info(a.base_url), "args": vars(a)})

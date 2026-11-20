@@ -1,14 +1,12 @@
-"""Extract the publishable numbers from a GRPO run's artifacts.
+"""Pull the reward curve and cache totals out of a GRPO run.
 
-Two sources, two outputs:
-- the run log -> per-rollout reward/length series (the learning curve)
-- the dump dir's rollout_data/<step>.pt -> per-sample radix accounting summed
-  across the whole run (the P1<->P3 bridge number: prefill work the cache
-  refunded DURING TRAINING)
+- the training log -> reward / response length per rollout
+- the rollout dumps (rollout_data/<step>.pt) -> prompt and cached token totals
+  summed over every sample in the run
 
-Run inside the miles container (torch + miles importable):
-  python3 /ws/scripts/extract_grpo_stats.py --log /ws/runs/grpo_train.log \
-      --dumps /ws/runs/grpo_gym/dumps --out /ws/runs/grpo_gym_stats.json
+Run inside the miles container (needs torch + miles):
+  python3 /ws/scripts/extract_grpo_stats.py --log /ws/runs/p3/grpo_train.log \
+      --dumps /ws/runs/p3/grpo_gym/dumps --out /ws/runs/p3/grpo_gym_stats.json
 """
 
 import argparse
@@ -31,8 +29,8 @@ def parse_curve(log_path):
         rows.append({"rollout": int(m.group(1)), "raw_reward": grab("rollout/raw_reward"),
                      "response_len": grab("rollout/response_lengths"),
                      "truncated": grab("rollout/truncated")})
-    # the log may contain a collapsed earlier run; keep the LAST monotonically
-    # restarting sequence (rollout numbering resets to 0 on a new run)
+    # if a log holds more than one run, keep only the last one
+    # (rollout numbering restarts at 0 for each run)
     last_start = 0
     for i in range(1, len(rows)):
         if rows[i]["rollout"] < rows[i - 1]["rollout"]:
@@ -66,7 +64,7 @@ def main():
     curve = parse_curve(a.log)
     try:
         radix = sum_radix(a.dumps)
-    except Exception as e:  # dumps format drift shouldn't lose the curve
+    except Exception as e:  # still write the curve if the dumps can't be read
         radix = {"error": f"{type(e).__name__}: {e}"}
     out = {"curve": curve, "radix": radix,
            "summary": {"rollouts": len(curve),

@@ -1,9 +1,8 @@
 """Reference attention implementations and correctness tolerances.
 
 The naive version materializes the full N x N score matrix — that is the
-memory wall the whole project exists to feel: O(N^2) bytes written and read
-back, versus FlashAttention's O(N) working set. Keep it: it is the baseline
-that makes the kernel's point.
+memory cost FlashAttention avoids: O(N^2) bytes written and read back, versus
+FlashAttention's O(N) working set. It doubles as the correctness reference.
 
 Tolerance discipline: the kernel computes in BF16 inputs with FP32
 accumulation, so it is compared against an FP32 reference, with tolerances

@@ -3,7 +3,7 @@
 # per-request records cannot: thermals, memory creep, silent restarts mid-run.
 #
 #   docker compose up -d                     # from this directory, on the Spark
-#   ssh -L 3001:localhost:3000 cute-spark    # dashboard: http://localhost:3001/d/sparklab
+#   ssh -L 3001:localhost:3000 spark    # dashboard: http://localhost:3001/d/sparklab
 #   (add -L 9093:localhost:9093 to reach the Alertmanager UI for silences)
 #
 # Host networking throughout, but every service is pinned to 127.0.0.1 — under

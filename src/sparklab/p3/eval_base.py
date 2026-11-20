@@ -1,16 +1,12 @@
 """Eval-before-you-train: measure each task's base success rate BEFORE any RL.
 
-The failure mode this exists to dodge (the Together-panel catch): a model at
-~0% success on every task produces all-zero reward groups, zero advantage, a
-flat curve — and two weeks lost discovering the run never COULD learn. So:
-every task in the training mix must sit in roughly the 10-60% base-success
-band. This pass measures that band membership cheaply, before any trainer
-exists in the loop.
+GRPO learns only from groups where some rollouts succeed and some fail. A
+task the base model never solves (or always solves) gives zero advantage and
+a flat curve. So each task's base success rate is measured first, and only
+tasks in roughly the 10-60% band go into the training mix.
 
-It doubles as the P1<->P3 bridge: every model call goes through the measured
-client, so the radix cache's per-request refunds are summed alongside the
-success rates — "prefix caching cut rollout prompt work by X%" is measured
-here first, then inside the real training run.
+Every model call goes through the P1 client, so the prefix-cache hit rate of
+the rollouts is recorded too.
 
 Run (server up, UI stopped):
   python -m sparklab.p3.eval_base --episodes 20
@@ -27,19 +23,16 @@ from .tasks import TEMPLATES
 
 MAX_TURNS = 8
 
-# Qwen-family ChatML markers. Instruct models are trained ON their chat
-# template — raw untemplated text produces rambling, not tool calls. (The
-# first 1.5B eval ran untemplated and scored 0% on every task including
-# difficulty 1; that run is kept in runs/ as the canonical eval-before-train
-# catch.) The transcript stays append-only: each turn appends one assistant
-# block and one user (tool-result) block, never edits above.
+# Qwen ChatML markers. Instruct models need their chat template: the first
+# eval sent raw text and scored 0% on every task (kept in runs/p3/). The
+# transcript stays append-only: each turn adds one assistant block and one
+# tool-result block at the end.
 IM_START, IM_END = "<|im_start|>", "<|im_end|>"
 
 
 def run_episode(episode, base_url, max_new_tokens=192):
-    """One closed-loop rollout: model proposes tool calls, env executes them,
-    transcript grows append-only (the P1 workload shape, for real this time).
-    Returns (success, transcript_stats)."""
+    """One rollout: the model proposes tool calls, the env runs them, and the
+    transcript grows at the end. Returns (success, stats)."""
     initial = episode.env.snapshot()
     # fixed system block + task goal: the long shared prefix every turn resends
     ctx = (f"{IM_START}system\nYou are an agent operating a key-value store.\n"
@@ -75,7 +68,7 @@ def main():
     ap.add_argument("--base-url", default=DEFAULT_BASE_URL)
     ap.add_argument("--episodes", type=int, default=20, help="seeds per template")
     ap.add_argument("--tasks", nargs="*", default=sorted(TEMPLATES), choices=sorted(TEMPLATES))
-    ap.add_argument("--out-dir", default="runs")
+    ap.add_argument("--out-dir", default="runs/p3")
     a = ap.parse_args()
 
     warmup(a.base_url)
@@ -90,7 +83,6 @@ def main():
             ptoks += stats["prompt_tokens"]
             ctoks += stats["cached_tokens"]
         rate = wins / a.episodes
-        # the trainability band: all-zero groups can't learn; near-solved tasks teach nothing
         band = "TRAINABLE" if 0.10 <= rate <= 0.60 else ("too hard" if rate < 0.10 else "too easy")
         results.append({"task": name, "difficulty": TEMPLATES[name](0).difficulty,
                         "success_rate": rate, "band": band,

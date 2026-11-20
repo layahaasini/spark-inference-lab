@@ -1,20 +1,13 @@
-"""Task templates: parameterized, seeded, machine-checkable — and each one
-ships its own anti-reward-hacking negative test.
+"""Task templates: seeded, checked against the final env state, and each with
+a known cheat that must score 0.
 
-The three rules every template obeys:
+1. Verify state, not text. Success is a check on the env's final state.
+2. Nothing else may change. verify() also checks that unrelated keys are
+   untouched, so "delete everything, then write the answer" scores 0.
+3. Each template has a lucky_guess(): a shortcut a cheating policy might find.
+   tests/test_p3_tasks.py asserts every one of them scores 0.
 
-1. VERIFY STATE, NEVER TEXT. Success is a predicate over the environment's
-   final state. What the model claims is irrelevant; only what it did counts.
-2. INTEGRITY IS PART OF SUCCESS. verify() also checks that nothing UNRELATED
-   changed. A trajectory that reaches the goal by bulldozing the rest of the
-   state scores 0 — that closes the classic reward hack ("delete everything,
-   then write the answer") before training ever discovers it.
-3. EVERY TEMPLATE SHIPS ITS OWN HACK. lucky_guess() produces a trajectory a
-   cheating policy might find — it must score 0, and a test enforces that
-   forever (the port-8080 lesson, institutionalized).
-
-Difficulty ladder (Together amendment): 1 = one write; 2 = read-then-write;
-3 = multi-step. Gradient signal must exist somewhere at every skill level.
+Difficulty: 1 = one write, 2 = read then write, 3 = multi-step.
 """
 
 import random
@@ -142,7 +135,7 @@ def cleanup_threshold(seed):
             all(k in e.state and e.state[k] == v for k, v in init.items() if v <= thr)
             and all(k not in e.state for k, v in init.items() if v > thr)
         ),
-        # the canonical hack: delete EVERYTHING — surface goal reached, integrity gone
+        # cheat: delete every key. The goal holds, but unrelated keys are gone.
         _lucky=lambda e: [e.call("delete", {"key": k}) for k in list(e.state)],
     )
 
