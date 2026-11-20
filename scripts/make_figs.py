@@ -1,14 +1,14 @@
-"""Generate the write-up figures from committed run JSONs.
+"""Make every figure in writeups/figs/ from the run files in runs/.
 
-Selects runs by their recorded CLI args (latest timestamp per shape), so the
-figures always reflect the newest data in runs/ — never hand-entered numbers.
-Output: writeups/figs/*.png
+P1 runs are picked by the CLI args saved in each manifest (latest run per
+workload shape), so no numbers are typed in by hand.
+
+  python scripts/make_figs.py
 """
 
 import glob
 import json
 import pathlib
-
 import sys
 
 import matplotlib
@@ -21,7 +21,6 @@ sys.path.insert(0, str(ROOT / "src"))
 from sparklab.p1.tracegen import TraceConfig, gen_trace  # noqa: E402
 FIGS = ROOT / "writeups" / "figs"
 
-# palette: categorical slots 1-3, chrome/ink roles
 BLUE, ORANGE, AQUA = "#2a78d6", "#eb6834", "#1baf7a"
 SURFACE, INK, INK2, MUTED, GRID, BASELINE = "#fcfcfb", "#0b0b0b", "#52514e", "#898781", "#e1e0d9", "#c3c2b7"
 
@@ -39,9 +38,9 @@ plt.rcParams.update({
 
 
 def load_runs():
-    """Latest run per shape, keyed by the args each run recorded."""
+    """Latest P1 run per workload shape, keyed by the args each run recorded."""
     shapes = {}
-    for path in sorted(glob.glob(str(ROOT / "runs" / "pressure_*.json"))):
+    for path in sorted(glob.glob(str(ROOT / "runs" / "p1" / "pressure_*.json"))):
         data = json.loads(pathlib.Path(path).read_text())
         args = data["manifest"].get("args", {})
         if args.get("group_size", 1) > 1:
@@ -60,8 +59,8 @@ def load_runs():
 
 def attainable_hit(cfg):
     """Best possible hit rate for a trace under an infinite cache: each request
-    can reuse at most its longest previously-seen prefix. Computed in words,
-    which is ratio-safe because word->token expansion is uniform here."""
+    can reuse at most its longest previously-seen prefix. Counted in words,
+    which is fine for a ratio because words map to tokens evenly here."""
     events = gen_trace(cfg)
     head = None
     prev = {}
@@ -79,8 +78,7 @@ def attainable_hit(cfg):
                 n += 1
             cached += n
         if head is None:
-            # everything up to the per-session tag is the shareable head
-            head = words
+            head = words  # the first prompt stands in for the shared head
         prev[s] = words
     return cached / total
 
@@ -122,7 +120,7 @@ def fig_hit_rate(shapes):
     ax.set_title("Hit rate vs session pressure on a 383k-token pool", loc="left")
     ax.legend(frameon=False, labelcolor=INK2, loc="lower left")
     fig.tight_layout()
-    fig.savefig(FIGS / "hit_rate_vs_sessions.png", dpi=180)
+    fig.savefig(FIGS / "p1_hit_rate_vs_sessions.png", dpi=180)
 
 
 def fig_hit_rate_normalized(shapes):
@@ -144,7 +142,7 @@ def fig_hit_rate_normalized(shapes):
     ax.set_title("Normalized to each shape's own ceiling (infinite-cache maximum)", loc="left")
     ax.legend(frameon=False, labelcolor=INK2, loc="lower left")
     fig.tight_layout()
-    fig.savefig(FIGS / "hit_rate_normalized.png", dpi=180)
+    fig.savefig(FIGS / "p1_hit_rate_normalized.png", dpi=180)
 
 
 def fig_ttft(shapes):
@@ -164,7 +162,7 @@ def fig_ttft(shapes):
     ax.set_title("Eviction lands tail-first: p99 rises across the knee, p50 barely moves", loc="left")
     ax.legend(frameon=False, labelcolor=INK2, loc="upper left")
     fig.tight_layout()
-    fig.savefig(FIGS / "ttft_tail_first.png", dpi=180)
+    fig.savefig(FIGS / "p1_ttft_tail_first.png", dpi=180)
 
 
 def fig_tokens_avoided(shapes):
@@ -176,17 +174,68 @@ def fig_tokens_avoided(shapes):
         by_n = {r["n_sessions"]: r["tokens_avoided"] / 1e6 for r in shapes[key]["results"]}
         xs = [j + (i - 1) * width for j in range(len(counts))]
         ys = [by_n[n] for n in counts]
-        ax.bar(xs, ys, width=width * 0.92, color=color, label=label)  # slight shrink = surface gap
+        ax.bar(xs, ys, width=width * 0.92, color=color, label=label)
         for x, y in zip(xs, ys):
             ax.annotate(f"{y:.1f}", (x, y), textcoords="offset points",
                         xytext=(0, 3), ha="center", color=INK2, fontsize=9)
     ax.set_xticks(range(len(counts)), [str(n) for n in counts])
     ax.set_xlabel("concurrent sessions")
     ax.set_ylabel("prefill tokens avoided (millions)")
-    ax.set_title("The headline metric by workload shape", loc="left")
+    ax.set_title("Prefill tokens avoided by workload shape", loc="left")
     ax.legend(frameon=False, labelcolor=INK2, loc="upper left")
     fig.tight_layout()
-    fig.savefig(FIGS / "tokens_avoided.png", dpi=180)
+    fig.savefig(FIGS / "p1_tokens_avoided.png", dpi=180)
+
+
+def fig_p2_attention():
+    """TFLOP/s at 8k context for each backend, from the final benchmark run."""
+    path = sorted(glob.glob(str(ROOT / "runs" / "p2" / "attn_bench_*.json")))[-1]
+    rows = [r for r in json.loads(pathlib.Path(path).read_text())["results"]
+            if r["seq"] == 8192 and r["tflops"]]
+    shapes = ["qwen2.5-0.5b", "qwen2.5-7b", "llama3-8b"]
+    impls = (("triton-fa (ours)", BLUE, "ours (Triton)"), ("flashinfer", ORANGE, "FlashInfer"),
+             ("torch-sdpa", AQUA, "torch SDPA"), ("sglang-triton", MUTED, "SGLang Triton"))
+    fig, ax = plt.subplots(figsize=(7.2, 4.2))
+    width = 0.2
+    for i, (impl, color, label) in enumerate(impls):
+        by_shape = {r["shape"]: r["tflops"] for r in rows if r["impl"] == impl}
+        xs = [j + (i - 1.5) * width for j in range(len(shapes))]
+        ys = [by_shape.get(s, 0) for s in shapes]
+        ax.bar(xs, ys, width=width * 0.92, color=color, label=label)
+        for x, y in zip(xs, ys):
+            ax.annotate(f"{y:.0f}", (x, y), textcoords="offset points",
+                        xytext=(0, 3), ha="center", color=INK2, fontsize=8)
+    ax.set_xticks(range(len(shapes)), shapes)
+    ax.set_ylabel("TFLOP/s (causal, 8k tokens)")
+    ax.set_title("Attention forward at 8k context on GB10", loc="left")
+    ax.legend(frameon=False, labelcolor=INK2, loc="upper left", ncol=4, fontsize=9)
+    ax.set_ylim(0, 110)
+    style(ax)
+    fig.tight_layout()
+    fig.savefig(FIGS / "p2_attention_8k.png", dpi=180)
+
+
+def fig_p3_reward():
+    """GRPO reward per rollout step, with a 5-step moving average."""
+    stats = json.loads((ROOT / "runs" / "p3" / "grpo_gym_stats.json").read_text())
+    xs = [r["rollout"] for r in stats["curve"]]
+    ys = [r["raw_reward"] for r in stats["curve"]]
+    avg = [sum(ys[max(0, i - 4):i + 1]) / len(ys[max(0, i - 4):i + 1]) for i in range(len(ys))]
+    fig, ax = plt.subplots(figsize=(7.2, 4.2))
+    ax.plot(xs, ys, color=BLUE, linewidth=1.2, marker="o", markersize=3.5, alpha=0.7,
+            label="mean reward per step (64 episodes)")
+    ax.plot(xs, avg, color=ORANGE, linewidth=2.2, label="5-step moving average")
+    ax.axhline(ys[0], color=MUTED, linestyle="--", linewidth=1.2)
+    ax.text(xs[-1], ys[0], f"step 0 ({ys[0]:.2f})", color=INK2, fontsize=9, ha="right", va="bottom")
+    ax.set_ylim(0, 0.6)
+    ax.set_xlim(left=0)
+    ax.set_xlabel("rollout step")
+    ax.set_ylabel("mean episode reward")
+    ax.set_title("GRPO on the tool-loop gym (Qwen2.5-1.5B, one GB10)", loc="left")
+    ax.legend(frameon=False, labelcolor=INK2, loc="upper left")
+    style(ax)
+    fig.tight_layout()
+    fig.savefig(FIGS / "p3_reward_curve.png", dpi=180)
 
 
 def main():
@@ -199,6 +248,8 @@ def main():
     fig_hit_rate_normalized(shapes)
     fig_ttft(shapes)
     fig_tokens_avoided(shapes)
+    fig_p2_attention()
+    fig_p3_reward()
     for f in sorted(FIGS.glob("*.png")):
         print(f)
 

@@ -1,6 +1,6 @@
 # What is prefix caching actually worth for tool-calling agents?
 
-> **DRAFT — numbers final, prose in progress. Do not publish before the pre-publication checklist at the bottom is cleared.**
+*Project 1 of [spark-inference-lab](../README.md) · measured August 2026*
 
 **Question:** how much does SGLang's RadixAttention actually save on realistic agentic workloads, in tokens and milliseconds?
 **Method:** a parameterized synthetic-trace generator modeling how agent frameworks assemble context (long shared system prefix, append-only per-turn growth, N interleaved sessions, heavy-tail scheduling, GRPO group sampling), replayed against a pinned SGLang server on a DGX Spark — cache on vs off, eviction pressure controlled by shrinking the KV pool.
@@ -42,7 +42,7 @@ Tokens are approximated as words at generation time; every published count is th
 
 ### 1. Cache off vs cache on: the refund
 
-Same trace (2–32 sessions × 5 turns), same server config, one flag flipped. Three of five sweep points shown; the omitted rows (4, 16 sessions) sit between their neighbors, full data in `runs/`:
+Same trace (2–32 sessions × 5 turns), same server config, one flag flipped. Three of five sweep points shown; the omitted rows (4, 16 sessions) sit between their neighbors, full data in `runs/p1/`:
 
 | sessions | cache-off p50 / p99 TTFT | cache-on p50 / p99 TTFT | hit rate | tokens avoided |
 |---|---|---|---|---|
@@ -76,9 +76,9 @@ shared head + sessions × per-session history  =  pool
 Ceiling through 64, first crack at 72–80, prediction validated within ~10%. This sweep was run twice — before and after the warmup fix, on separate server restarts — and every hit rate reproduces within about a point. Two properties of the collapse matter more than its location:
 
 - **It is a slope, not a cliff.** Even at 160 sessions — working set 2.2× the pool — the hit rate is 64.8%, not 6%. Under LRU with append-only growth, every miss immediately re-primes the evicted branch, which then survives long enough to serve the session's next turns. Eviction and reuse reach a moving equilibrium instead of thrashing to zero.
-- **It lands tail-first.** Across the knee, p99 TTFT rises ~2.6× (70 → 186 ms) while p50 moves ~20%. Most requests still hit; the unlucky ones pay full re-prefill. An agent that runs ten sequential turns samples the tail with probability ~1 − 0.99¹⁰ ≈ 10% — for agents, **the p99 is the contract**, and the knee shows up there first.
+- **It lands tail-first.** Across the knee, p99 TTFT rises ~2.6× (70 → 186 ms) while p50 moves ~20%. Most requests still hit; the unlucky ones pay full re-prefill. An agent that runs ten sequential turns samples the tail with probability ~1 − 0.99¹⁰ ≈ 10%. For agents the p99 matters more than the p50, and the knee shows up there first.
 
-![p50/p99 TTFT vs sessions: p99 jumps at the predicted knee while p50 stays flat](figs/ttft_tail_first.png)
+![p50/p99 TTFT vs sessions: p99 jumps at the predicted knee while p50 stays flat](figs/p1_ttft_tail_first.png)
 
 ### 3. Traffic shape: the honest case vs the realistic case
 
@@ -90,13 +90,13 @@ Same pool, same session counts, Zipf-weighted scheduling (α = 1.1, context-capp
 | 96 | 76.2% | 89.1% | 4,651,994 |
 | 160 | **64.8%** | **86.5%** | 7,641,090 |
 
-![Hit rate vs sessions for uniform and Zipf scheduling, with the predicted knee marked](figs/hit_rate_vs_sessions.png)
+![Hit rate vs sessions for uniform and Zipf scheduling, with the predicted knee marked](figs/p1_hit_rate_vs_sessions.png)
 
 At maximum pressure, heavy-tail traffic holds a **22-point hit-rate advantage**. The mechanism is classical cache theory landing exactly as predicted: LRU keeps hot sessions resident, hot sessions carry most of the traffic, and evictions concentrate on cold sessions nobody revisits. Real agent fleets are heavy-tailed, so uniform-traffic benchmarks — including most published ones — *understate* what prefix caching is worth in production.
 
 Because capped Zipf sessions grow longer than uniform ones, the two curves have different attainable maxima, so the fair comparison normalizes each to its own infinite-cache ceiling (computed by longest-prefix simulation over the same traces):
 
-![Hit rate normalized to each shape's attainable maximum](figs/hit_rate_normalized.png)
+![Hit rate normalized to each shape's attainable maximum](figs/p1_hit_rate_normalized.png)
 
 Two things fall out of the normalized view. Below the knee, both shapes sit at ~100% — RadixAttention captures essentially **every hit the workload makes available**, so the raw ~84% ceiling was the trace's property, not the engine's. Past the knee, uniform traffic decays to 77% of attainable at 160 sessions while Zipf holds 96%: the entire collapse is an eviction story, and popularity skew is what shields against it.
 
@@ -110,31 +110,32 @@ GRPO-style group sampling — 4 samples sharing each context, diverging only at 
 | 64 | 25.5 ms | 96.1% | 8,953,955 |
 | 96 | 21.8 ms | 93.9% | **12,976,262** |
 
-![Prefill tokens avoided by workload shape at 16/64/96 sessions](figs/tokens_avoided.png)
+![Prefill tokens avoided by workload shape at 16/64/96 sessions](figs/p1_tokens_avoided.png)
 
 *(Bar totals are not cross-shape comparable in absolute terms — Zipf traces carry longer sessions and group mode sends 4× the requests; the refund share, not the total, is the comparable number.)*
 
-**~96% hit rate at the lowest latency of any workload measured** — three of every four requests replay a context the first sample just primed. This is the shape RL training produces during rollouts, and it means the rollout phase of multi-turn RL is nearly free on the prompt side when the cache is sized right. Measuring this *inside* an actual training run is the bridge experiment of Project 3.
+**~96% hit rate at the lowest latency of any workload measured** — three of every four requests replay a context the first sample just primed. This is the shape RL training produces during rollouts, and it means the rollout phase of multi-turn RL is nearly free on the prompt side when the cache is sized right. [Project 3](p3_tool_loop_gym.md) measured this inside a real GRPO training run: 82.6% of rollout prompt tokens came from the cache.
 
 ## What this means for capacity
 
 The standard capacity identity: if prefill is a fraction *f* of serving work and *h* of it is refunded, sustainable traffic multiplies by 1 / (1 − f·h). At the measured h ≈ 0.84 and a Mooncake-typical f ≈ 0.55, that projects **~1.86× more traffic on the same hardware** — before counting the queueing bonus (Little's law: shorter requests → fewer in flight → less waiting near saturation, so the delivered improvement exceeds the time saving alone). *f* was not measured in this campaign; validating the projection against goodput-under-SLO curves is listed as future work, and the formula's breakdown condition (f·h → 1) is nowhere near this regime.
 
-## Honesty section: what these numbers are not
+## Caveats
 
 - **The first number I got was wrong, and the cache-off baseline caught it.** My cold/warm sanity check initially showed a 123× TTFT ratio (3.8 s cold). The cache-off sweep then showed full re-prefill of mid-size contexts costs ~140 ms — so a 19.6k-token prefill cannot legitimately cost 3.8 s. That first-ever request had absorbed one-time server warmup. Re-measured with warmup excluded, the same prompt is 505 ms cold / 33 ms warm: **15.4×, not 123×.** Running the weakened-baseline check from Heiser's measurement-crimes list is the only reason the wrong number didn't ship.
 - **The warmup itself took two attempts to get right.** A tiny warmup request did not clear the artifact; neither did a mid-size one. The one-time cost hides in the chunked-prefill code path, which only engages above 8,192 prompt tokens — so a warmup that stays below the chunking threshold warms the wrong path. The harness now warms up past `chunked_prefill_size`, and every first-point p99 in the tables above is clean. (General lesson: warm up through the *same code paths* the measurement will take, not just the same endpoint.)
 - **Absolute numbers stay home.** Ratios, curve shapes, the knee-prediction method, and the traffic-shape gap transfer; milliseconds and dollars from a 273 GB/s single node do not.
-- **One replay per sweep point, no formal error bars.** Each point is a single full-trace replay (60–800 requests, so per-point percentiles are well-populated, but point-to-point variability is only bounded empirically: the knee sweep run twice across separate server restarts reproduced every hit rate within ~1 point). Bootstrap confidence intervals on the percentiles are queued for the final charts.
+- **One replay per sweep point, no formal error bars.** Each point is a single full-trace replay (60–800 requests, so per-point percentiles are well-populated, but point-to-point variability is only bounded empirically: the knee sweep run twice across separate server restarts reproduced every hit rate within ~1 point). Bootstrap confidence intervals on the percentiles would be the next step.
 - **One model, one engine, serial replay.** 0.5B-class model, SGLang only, one request in flight (the per-session closed loop is real; fleet-level concurrent arrivals are not modeled). vLLM's block-hash design would show the same shape with coarser matching granularity — measuring that is the obvious cross-engine follow-up.
 
 ## Reproducing
 
-Every table row traces to a JSON in `runs/` carrying its full manifest (software versions, GPU, clocks, seeds, server args, environment hash). The repo's tests pin the generator's invariants — determinism, append-only growth, shared head, group sharing, context caps — plus two server-gated end-to-end checks. One server flag, one command per experiment:
+Every table row traces to a JSON in [`runs/p1/`](../runs/README.md) carrying its full manifest (software versions, GPU, clocks, seeds, server args, environment hash). The repo's tests pin the generator's invariants — determinism, append-only growth, shared head, group sharing, context caps — plus two server-gated end-to-end checks. One server flag, one command per experiment:
 
 ```bash
 bash configs/spark_server.sh                    # add --disable-radix-cache for the off baseline
 python -m sparklab.p1.experiments.pressure --sessions 16 48 64 72 80 96 128 160
+python scripts/make_figs.py                     # rebuilds every figure from runs/
 ```
 
 ## Appendix: operations as measurement discipline
@@ -147,13 +148,3 @@ A number is only as trustworthy as the process that was serving when it was take
 - **One rule ties ops to science:** nothing upgrades during a measurement window. The experiment schedule and the deploy schedule are one schedule.
 
 None of this is fleet engineering — it's one box — but it's the difference between "numbers from my laptop session" and numbers a stranger can audit: pinned environment, gated changes, logged serving lifetime, and a manifest per run tying each row to all three.
-
-## Pre-publication checklist
-
-- [x] Fix warmup to exceed `chunked_prefill_size`; re-run affected sweeps; remove † markers
-- [x] Re-run cold/warm sanity check post-warmup-fix; quote the honest ratio (505 ms / 33 ms = 15.4×)
-- [x] Charts: hit-rate-vs-sessions (uniform + Zipf + predicted-knee line), TTFT p50/p99 pair, tokens-avoided bars — generated from run JSONs by `scripts/make_figs.py`
-- [x] Normalize uniform/Zipf curves to per-shape attainable maxima — infinite-cache simulation in `scripts/make_figs.py`; below the knee both shapes achieve ~100% of attainable
-- [x] Re-check cached-token pricing pages; date the citation (August 2026: Anthropic ~10%, OpenAI 10%, DeepSeek ~2% — re-verify at publication)
-- [x] Every chart re-checked against the measurement-crimes list — zero-based axes throughout; cache-off baseline present; distributions not means; configs disclosed in Setup + manifests; cross-shape comparability caveated and normalized; omitted table rows disclosed; run-to-run variability stated in Honesty section
-- [x] Final pass: every headline claim appears as a plain quotable sentence (refund, TTFT ratio, ceiling case, knee prediction, slope-not-cliff, tail-first, Zipf gap, normalized ~100%, group ~96%, capacity projection flagged as projection)
