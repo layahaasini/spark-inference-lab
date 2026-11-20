@@ -1,4 +1,4 @@
-# spark-inference-lab
+# spark-systems-lab
 
 Three systems experiments on one NVIDIA DGX Spark (GB10, 128 GB unified memory), done over summer 2026: LLM serving, GPU kernels, and agentic RL. They share one benchmarking module, so every result is measured the same way and saved with a record of the environment that produced it.
 
