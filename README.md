@@ -17,7 +17,7 @@ A note on numbers: the Spark's memory bandwidth (~273 GB/s) is about 30× lower 
 | ![hit rate vs sessions](writeups/figs/p1_hit_rate_vs_sessions.png) | ![attention TFLOP/s at 8k](writeups/figs/p2_attention_8k.png) |
 | ![p50 vs p99 TTFT](writeups/figs/p1_ttft_tail_first.png) | ![GRPO reward curve](writeups/figs/p3_reward_curve.png) |
 
-## Repo layout
+## Repo Layout
 
 ```
 writeups/        one writeup per project, plus figures
@@ -56,7 +56,7 @@ python -m sparklab.p3.eval_base --episodes 20         # P3 base-model eval
 
 P2 runs inside a container with Triton, and P3 training runs inside the miles container. The exact commands are in each project's README: [P1](src/sparklab/p1/README.md) · [P2](src/sparklab/p2/README.md) · [P3](src/sparklab/p3/README.md).
 
-## Running it as a service (optional)
+## Running it as a Service (Optional)
 
 For the long P1 measurement runs I ran the server as a systemd service with monitoring, so that a crash or restart (which wipes the cache and invalidates a measurement) would be logged and alerted on.
 
